@@ -311,6 +311,27 @@ async function opaqueFiles(directory:string,relative='',ancestors=new Set<string
   return files
 }
 
+// The pinned desktop Web App registers shell/rg inside each agent scope.
+// Adapt only exact built-in Android copies, before recording packed file hashes.
+const desktopToolPresets = {
+  'presets/standard.patch.yml':'e40bb192ed3b835312c2acd2ccd64d3bc4b85f80a7bc95b132cb18fbee190b5d',
+  'presets/cordis.patch.yml':'6be896c3d4885f395bf1856753f454cf725709ffdddcc57f1e6b8d8c07181f34',
+  'presets/ptc.patch.yml':'838665e063dc8bcab4caf24e41ec848373c434df4262feb981306944e1cec7fd',
+} as const
+export function androidWebAppPreset(relative:string,version:string,bytes:Buffer):Buffer {
+  if(!Object.hasOwn(desktopToolPresets,relative))return bytes
+  const expected=desktopToolPresets[relative as keyof typeof desktopToolPresets]
+  if(version!=='0.2.2-rc.5'||createHash('sha256').update(bytes).digest('hex')!==expected)
+    throw new Error('Android scoped tool adaptation must be reviewed for '+relative)
+  let text=bytes.toString('utf8')
+  const bash=/(^ +name: '@deepseek-ai\/dsh-tool-bash'\n +disabled: )[^\n]+$/gm
+  const rg=/^( +)(name: '@deepseek-ai\/dsh-tool-fs-search')$/gm
+  if([...text.matchAll(bash)].length!==1||[...text.matchAll(rg)].length!==1)
+    throw new Error('Missing or ambiguous desktop tool rows in '+relative)
+  text=text.replace(bash,'$1true').replace(rg,'$1$2\n$1disabled: true')
+  return Buffer.from(text)
+}
+
 export async function prepareHostTree(options:PackHostOptions,directory:string):Promise<HostPackReceipt> {
   const planned=plan(options)
   await fs.mkdir(directory,{recursive:true})
@@ -333,6 +354,9 @@ export async function prepareHostTree(options:PackHostOptions,directory:string):
       }
     } else {
       const selected=row.source===planned.product?productFiles:row.opaque?await opaqueFiles(row.source!):bySource.get(row.source!)!
+      const webApp=!row.opaque&&row.metadata.name==='@deepseek-ai/dsh-web-app'
+      if(webApp&&Object.keys(desktopToolPresets).some(file=>!selected.some(raw=>slash(raw).replace(/^\.\//,'')===file)))
+        throw new Error('Pinned Web App is missing Android reviewed agent presets')
       let ptyPrebuilds=0
       for(const raw of selected) {
         const relative=slash(raw).replace(/^\.\//,'')
@@ -345,7 +369,8 @@ export async function prepareHostTree(options:PackHostOptions,directory:string):
           }
           ptyPrebuilds++
         }
-        const bytes=await fs.readFile(path.join(row.source!,relative))
+        const plain=await fs.readFile(path.join(row.source!,relative))
+        const bytes=webApp?androidWebAppPreset(relative,row.metadata.version,plain):plain
         files.push({...await write(path.join(target,relative),bytes),path:relative})
       }
       if(!row.opaque&&row.metadata.name==='node-pty')unqualifiedCapabilities.push({id:'pty',reason:ptyPrebuilds

@@ -26,11 +26,13 @@ const sharedMarker='\n资料引用：currentContextRef 指当前请求已有的�
 const messageText=(message:ChatMessage|undefined):string=>typeof message?.content==='string'?message.content
   :Array.isArray(message?.content)?message.content.filter(part=>part?.type==='text'&&typeof part.text==='string').map(part=>part.text).join(''):''
 type RejectionReason='unsupported-tool-surface'|'malformed-envelope'|'unsupported-task-contract'|'unsupported-worker'|'incomplete-tool-receipt'
+const workspaceSurface=['write','edit','workspace_command','bash','grep','glob','rp_task_submit'] as const
 export interface FixtureRejection {
   schemaVersion:1
   fixture:typeof PROTOCOL_FIXTURE_ID
   reason:RejectionReason
   offeredTools:('rp_task_submit'|'rp_task_read'|'run_code')[]
+  workspaceTools?:typeof workspaceSurface[number][]
   taskKinds:('schema-maintenance'|'status'|'decision'|'memory'|'other')[]
   taskStages:('schema-maintenance-v1'|'background-notes'|'compaction'|'other')[]
 }
@@ -89,8 +91,10 @@ function fixturePlan(body:ChatBody,requestNumber:number):FixturePlan {
   // additional user-role message. Match the reserved synthetic token, not the
   // full serialized message; payloads, tool receipts and final UI are still checked.
   const workspaceToken=new RegExp('(?:^|[^A-Za-z0-9_])'+WORKSPACE_TOOLS_PROMPT+'(?=$|[^A-Za-z0-9_])')
-  if(messages.some(message=>message.role==='user'&&workspaceToken.test(messageText(message))))
+  if(messages.some(message=>message.role==='user'&&workspaceToken.test(messageText(message)))) {
+    rejection.workspaceTools=workspaceSurface.filter(name=>body.tools?.some(tool=>tool.type==='function'&&tool.function?.name===name))
     return workspacePlan(body,requestNumber,fixtureFailure)
+  }
   if(latest?.role==='tool') {
     const assistant=messages.findLast(message=>message.role==='assistant'&&!!message.tool_calls?.length)
     const calls=assistant?.tool_calls??[]

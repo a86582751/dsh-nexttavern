@@ -1050,16 +1050,18 @@ function fixtureFailureEvidence(file:string):void {
       reason:enumList([row.reason],['unsupported-tool-surface','malformed-envelope','unsupported-task-contract',
         'unsupported-worker','incomplete-tool-receipt'])[0]??'unrecognized',
       offeredTools:enumList(row.offeredTools,['rp_task_submit','rp_task_read','run_code']),
+      workspaceTools:enumList(row.workspaceTools,['write','edit','workspace_command','bash','grep','glob','rp_task_submit']),
       taskKinds:enumList(row.taskKinds,['schema-maintenance','status','decision','memory','other']),
       taskStages:enumList(row.taskStages,['schema-maintenance-v1','background-notes','compaction','other']),
     }));
   const requests=[...fixtureCounterSnapshot(file).values()];
+  const modeNames=['story','maintenance','maintenance-complete','background-memory','workspace-write','workspace-search','workspace-complete'];
   const modes=new Map<number,string>();
   for(const row of rows)if(row.kind==='local-protocol-fixture-request'&&row.fixture===PROTOCOL_FIXTURE_ID
-    &&Number.isSafeInteger(row.request)&&['story','maintenance','maintenance-complete','background-memory'].includes(row.mode))
+    &&Number.isSafeInteger(row.request)&&modeNames.includes(row.mode))
       modes.set(row.request,row.mode);
   emit('observed',{interaction:'synthetic-fixture-summary',requests:requests.length,
-    modes:Object.fromEntries(['story','maintenance','maintenance-complete','background-memory']
+    modes:Object.fromEntries(modeNames
       .map(mode=>[mode,[...modes.values()].filter(value=>value===mode).length])),
     completed:requests.filter(row=>row.completed).length,aborted:requests.filter(row=>row.aborted).length,rejected});
 }
