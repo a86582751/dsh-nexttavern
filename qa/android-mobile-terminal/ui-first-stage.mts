@@ -1358,12 +1358,23 @@ let memoryCommandEmbeddingBaseline:number|null=null;
 function memoryCommandFailureFacts():Record<string,unknown> {
   const mode=(value:unknown)=>value===undefined?null:
     ['keyword','semantic','hybrid'].includes(value as string)?value:'unrecognized';
-  const parsed=parsedMemoryResults(false);
+  const fallbackCategory=(value:unknown)=>{
+    if(typeof value!=='string')return null;
+    if(/fetch failed|ECONNREFUSED|HTTP|连接|network/i.test(value))return 'provider-transport';
+    if(/timed out|timeout|超时/i.test(value))return 'provider-or-worker-timeout';
+    if(/向量来源未就绪/.test(value))return 'provider-not-ready';
+    if(/索引|无可用向量/.test(value))return 'index';
+    return 'other';
+  };
+  const parsed=parsedMemoryResults(false),baseline=memoryCommandEmbeddingBaseline;
+  const requests=baseline===null?null:[...memoryFixtureCounts(fixtureEvents).values()]
+    .filter(record=>record.request>baseline);
   return {parsedResultCount:parsed.length,results:parsed.slice(0,4).map(({result,textLength})=>({
     mode:mode(result.mode),requestedMode:mode(result.requestedMode),
-    fallbackPresent:Object.hasOwn(result,'fallback'),entriesCount:result.entries.length,textLength,
-  })),freshEmbeddingHttpCompletions:memoryCommandEmbeddingBaseline===null?null:
-    completedMemoryAfter(fixtureEvents,memoryCommandEmbeddingBaseline).length};
+    fallbackPresent:Object.hasOwn(result,'fallback'),fallbackCategory:fallbackCategory(result.fallback),
+    entriesCount:result.entries.length,textLength,
+  })),freshEmbeddingHttpRequests:requests?.length??null,
+    freshEmbeddingHttpCompletions:requests?.filter(record=>record.completed&&!record.aborted).length??null};
 }
 /** Read the observed mode control only; missing AX selection metadata is not a failure. */
 async function observeSemanticModeControl(moment:'after-mode-click'|'after-restart'):Promise<void> {
@@ -1436,11 +1447,18 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
     &&inWebView(node)&&node.enabled!=='false'&&visibleBounds(node));
   requireUi(composers.length===1,'MEMORY_SLASH_COMPOSER_NOT_UNIQUE');
   await typeAscii(composers[0],memoryQueryCommand,'synthetic-memory-command');
-  await press(['发送消息','Send message']); // One actual slash command, no paid chat turn.
+  const send=await reveal(['发送消息','Send message']);
+  // The runner can lose its reverse tunnel after an accessibility transport
+  // recovery, even without an adbd restart. Recheck after the final read,
+  // directly before the single real slash command. Never replay the command.
+  ensureMemoryFixtureLoopback();
+  tapNode(send);
   let outcome:{node:Node;result:Record<string,any>}|undefined;
   await until(()=>{
     const outcomes=memoryResults(false);requireUi(outcomes.length<=1,'FRESH_MEMORY_RESULT_AMBIGUOUS');
-    outcome=outcomes[0];return Boolean(outcome)&&completedMemoryAfter(eventsFile,embeddingBaseline).length>0;
+    outcome=outcomes[0];
+    if(outcome&&Object.hasOwn(outcome.result,'fallback'))throw new UiFailure('MEMORY_QUERY_FELL_BACK_OR_WAS_NOT_SEMANTIC');
+    return Boolean(outcome)&&completedMemoryAfter(eventsFile,embeddingBaseline).length>0;
   },90,'FRESH_MEMORY_COMMAND_FULL_JSON_OR_EMBEDDING_REQUEST_NOT_OBSERVED');
   showControl(outcome!.node);
   await until(()=>memoryResults().length===1,20,'FRESH_MEMORY_RESULT_ROW_NOT_VISIBLE');
