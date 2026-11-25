@@ -63,9 +63,11 @@ The [Linux setup script](https://github.com/a86582751/dsh-nexttavern/releases/do
 
 ### Android
 
-The first Android preview is for **ARM64 phones running Android 11 or newer** (`arm64-v8a`). [Download APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk) · [SHA-256 checksum](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk.sha256) · [Source for this APK](https://github.com/a86582751/dsh-nexttavern/tree/f23fe34609ca88eb7fbe15c0e1656cf0c8355f45).
+The RC2 Android preview is for **ARM64 phones running Android 11 or newer** (`arm64-v8a`). [Download APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-0.3.0-rc.2-android-arm64.apk) · [SHA-256 checksum](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-0.3.0-rc.2-android-arm64.apk.sha256) · [Source for this APK](https://github.com/a86582751/dsh-nexttavern/tree/92149cb7fd450104effe1fa171fa664552b63225).
 
-The signed APK installed successfully on a **Redmi K90 Pro Max (Android 16)**. A live model call also succeeded after signing in with an official DeepSeek account. An x86_64 emulator using simulated services verified startup, custom model setup, streaming chat, embedding indexing, and semantic recall after restart. Allow about 2 GB of free space. This build cannot update a differently signed test build in place; export or back up your data before uninstalling the old app. Android background limits may interrupt the app.
+On official RC1, install RC2 over the existing app without uninstalling. A differently signed test build cannot update in place; export or back up your data first. Allow about 2 GB of free space. Android background limits may interrupt the app.
+
+The screenshot shows RC1 on a **Redmi K90 Pro Max (Android 16)**, where installation and a live model call with official DeepSeek sign-in both succeeded. See the [RC2 release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) for test coverage.
 
 Android is maintained on the independent [`android/mobile-terminal` branch](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal).
 

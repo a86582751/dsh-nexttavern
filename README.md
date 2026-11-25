@@ -63,11 +63,13 @@ dsh web --host 127.0.0.1
 
 ### Android
 
-首个 Android 预览包面向 **Android 11 及以上的 ARM64 手机**（`arm64-v8a`）。[下载 APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk) · [SHA-256 校验](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk.sha256) · [本包源码](https://github.com/a86582751/dsh-nexttavern/tree/f23fe34609ca88eb7fbe15c0e1656cf0c8355f45)。
+RC2 Android 预览包面向 **Android 11 及以上的 ARM64 手机**（`arm64-v8a`）。[下载 APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-0.3.0-rc.2-android-arm64.apk) · [SHA-256 校验](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-0.3.0-rc.2-android-arm64.apk.sha256) · [本包源码](https://github.com/a86582751/dsh-nexttavern/tree/92149cb7fd450104effe1fa171fa664552b63225)。
 
 无需 root、Termux、Ubuntu 或常开的电脑。应用内置 Harness 运行时，故事数据保存在手机上；生成故事仍需在应用里配置自己的在线模型服务和 API Key。
 
-ARM64 包已完成构建、签名和静态校验，并已在 **红米 K90 Pro Max（Android 16）** 上安装通过。使用 DeepSeek 官方账号登录后，真实模型调用测试也已通过。x86_64 模拟器使用模拟服务验证了启动、自定义模型配置、流式聊天、嵌入建索引及重启后的语义检索。建议预留约 2 GB 空间。若手机装过不同签名的内部测试包，不能直接覆盖；请先从旧版导出角色卡和作品或备份数据，再决定是否卸载。Android 后台限制仍可能中断运行。
+已装官方 RC1 可直接覆盖安装 RC2，不用卸载。不同签名的测试包不能覆盖，卸载前请先导出或备份数据。建议预留约 2 GB 空间。Android 后台限制仍可能中断运行。
+
+下图为 RC1 在 **红米 K90 Pro Max（Android 16）** 上的实机画面，该设备已通过安装和 DeepSeek 官方账号真实模型调用测试。RC2 的验收范围见 [RC2 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2)。
 
 Android 源码在 [`android/mobile-terminal` 分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)独立维护。[Android 开发说明](https://github.com/a86582751/dsh-nexttavern/blob/android/mobile-terminal/DEVELOPMENT-ANDROID.md)
 
