@@ -147,6 +147,7 @@ export interface TaskHostCompaction {
   resumeTask?(agent: HostAgent, signal: AbortSignal | undefined, stage?: string): PromiseLike<unknown>
 }
 export interface TaskHostDependencies {
+  auxiliaryInstructions?:TaskOptions<HostSession,HostAgent>['auxiliaryInstructions']
   characterPrivate?:CharacterPrivateTaskHostV1
   storyEntryReader?:ContextStoryEntryReader
   observeRecords?:TaskOptions<HostSession,HostAgent>['observeRecords']

@@ -28,6 +28,7 @@ const manualRunKey=(operationId:string,ordinal:number)=>recordSha256({
 const runKey=(run:Pick<RubyRunV1,'trigger'|'invocation'>)=>run.invocation
   ?manualRunKey(run.invocation.operationId,run.invocation.ordinal):recordSha256(run.trigger)
 interface Dependencies {
+  auxiliaryInstructions?(sid:string):string|undefined
   readonly table:{get(key:string):unknown;entries():Iterable<[string,unknown]>;
     entriesPrefix?(prefix:string):Iterable<[string,unknown]>;
     put(key:string,value:unknown):PromiseLike<unknown>}
@@ -255,14 +256,24 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
           return
         }
         const prepared=decision.input
+        const auxiliary=deps.auxiliaryInstructions?.(sid)
+        let messages=prepared.messages,mainInputMessageIndex=prepared.mainInputMessageIndex
+        if(auxiliary) {
+          const first=messages[0]
+          if(first?.role==='system')messages=[{...first,content:auxiliary+'\n\n'+first.content},...messages.slice(1)]
+          else {
+            messages=[{role:'system',content:auxiliary},...messages]
+            if(mainInputMessageIndex!==undefined)mainInputMessageIndex++
+          }
+        }
         input={schemaVersion:1,encoding:'native-ruby-task-input-capture-v1',
           configuration:prepared.configuration,taskKey:prepared.taskKey,trigger:prepared.trigger,
           window:{startOrdinal:prepared.window.startOrdinal,endOrdinal:prepared.window.endOrdinal,count:prepared.window.count,
             messages:rows(prepared.window.messages),scanTextSha256:sha256(prepared.window.scanText)},
           promptRef:prepared.promptRef,referenceRefs:prepared.referenceRefs,outputRefs:prepared.outputRefs,
-          truncatedBodyChars:prepared.truncatedBodyChars,matchedKeywords:prepared.matchedKeywords,messages:prepared.messages,
+          truncatedBodyChars:prepared.truncatedBodyChars,matchedKeywords:prepared.matchedKeywords,messages,
           ...(capture.configuration.generation?{generation:capture.configuration.generation}:{}),
-          ...(prepared.mainInputMessageIndex!==undefined?{mainInputMessageIndex:prepared.mainInputMessageIndex}:{}),
+          ...(mainInputMessageIndex!==undefined?{mainInputMessageIndex}:{}),
           ...run.invocation?{invocation:run.invocation}:{}}
         promptPlanSha256=recordSha256({sourceIdentitySha256:capture.sourceIdentitySha256,input})
         const prefix=keyOf(sid,`ruby-input-v1-${promptPlanSha256}`)

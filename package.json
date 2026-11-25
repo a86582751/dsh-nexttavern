@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern",
-  "version": "0.3.0-rc.1",
+  "version": "0.3.0-rc.2",
   "description": "DeepSeek Harness 长篇角色扮演插件，支持导入与创作角色卡、作者自定义界面、世界书、世界线、长期记忆和原稿导出。在运行中的 Harness 首次安装后，重启即可启用。",
   "keywords": [
     "dsh-nexttavern",

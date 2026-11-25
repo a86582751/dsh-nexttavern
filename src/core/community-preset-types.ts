@@ -96,6 +96,15 @@ export interface CommunityPresetV1 {
   contentRevision?:number
   profile:CommunityPresetProfile
 }
+export function orderedCommunityPresetPrompts(preset:CommunityPresetV1):CommunityPresetPrompt[] {
+  const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
+  return preset.promptOrder.length
+    ?preset.promptOrder.flatMap(row=>byId.get(row.identifier)??[])
+    :preset.prompts
+}
+export function isAuxiliaryCommunityPrompt(prompt:CommunityPresetPrompt):boolean {
+  return !prompt.marker&&!prompt.sectionBoundary&&!prompt.configurationOnly
+}
 export interface CommunityPresetDataPromptV1 {
   id:string
   name:string

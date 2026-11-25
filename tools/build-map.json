@@ -21105,7 +21105,7 @@
       "status": "candidate",
       "repository": "a86582751/dsh-nexttavern",
       "packageName": "dsh-nexttavern",
-      "candidateVersion": "0.3.0-rc.1",
+      "candidateVersion": "0.3.0-rc.2",
       "portableHarness": {
         "packageArtifact": "public-harness-package",
         "lockArtifact": "public-harness-lock"

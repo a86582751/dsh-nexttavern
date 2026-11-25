@@ -7,6 +7,7 @@ import { eventsOf, surfaceEntries, canonicalAssistantForTurn } from './roleplay-
 import { importedStoryProjection } from '../memory/memory-provenance.js';
 import { fenceCardContent } from './tavern-card.js';
 import { TaskValidationError, isInlinePending } from './tavern-tasks.js';
+import { isTaskRequestRejection, taskFailureDetails } from './tavern-task-support.js';
 import { importActiveKey } from './roleplay-import.js';
 import { createRoleplayStatusControlFactsV1 } from './roleplay-status-control-facts.js';
 export function createRoleplayStatus(deps) {
@@ -294,6 +295,8 @@ export function createRoleplayStatus(deps) {
             let spec;
             let resultCommitted = false;
             try {
+                if (!force && record?.state === 'failed')
+                    return record;
                 // Recovery owns the admitted Source, not a new generation over
                 // edited prose. Keep its stale facts for explicit rebuilding.
                 if (purpose === 'recovery' && !force && record?.source
@@ -497,6 +500,7 @@ export function createRoleplayStatus(deps) {
                     return cloneBranchRecord(T.status.get(taskKey));
                 }
                 const live = statusSourceLive(session, event, source);
+                const rejectedRequest = isTaskRequestRejection(taskFailureDetails(error));
                 // A failed pointer write must leave the committed result available for
                 // replay, including after a process restart. Do not rerun its worker.
                 const durable = cloneBranchRecord(T.status.get(taskKey));
@@ -514,9 +518,10 @@ export function createRoleplayStatus(deps) {
                             source,
                             attempt: 1
                         }),
-                        state: live ? 'retry' : 'stale',
+                        state: !live ? 'stale' : rejectedRequest ? 'failed' : 'retry',
                         result: null,
-                        error: live ? '状态生成或提交失败，可重试' : '所选剧情已变更',
+                        error: !live ? '所选剧情已变更' : rejectedRequest
+                            ? '模型拒绝了状态生成请求，可在调整设定后重建' : '状态生成或提交失败，可重试',
                         updatedAt: Date.now()
                     };
                     await T.status.put(taskKey, record).catch(() => {
@@ -533,7 +538,7 @@ export function createRoleplayStatus(deps) {
                 }
                 const retries = (statusRetryCounts.get(taskKey) ?? 0) + 1;
                 statusRetryCounts.set(taskKey, retries);
-                if (live && retries <= 3 && !statusDisposed && !signal?.aborted) {
+                if (live && !rejectedRequest && retries <= 3 && !statusDisposed && !signal?.aborted) {
                     const retrySignal = cancellation.retrySignal();
                     const timer = setTimeout(() => {
                         statusRetryTimers.delete(taskKey);
@@ -549,7 +554,7 @@ export function createRoleplayStatus(deps) {
                     timer.unref?.();
                     statusRetryTimers.set(taskKey, timer);
                 }
-                ctx.logger?.warn?.(`roleplay: status obligation ${live ? 'retry' : 'stale'} turn=${source.turnId} seq=${event.seq}`);
+                ctx.logger?.warn?.(`roleplay: status obligation ${record.state} turn=${source.turnId} seq=${event.seq}`);
                 return cloneBranchRecord(T.status.get(taskKey)) ?? null;
             }
         }).finally(() => {

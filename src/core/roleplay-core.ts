@@ -59,6 +59,8 @@ import {registerSideChat,pageSideMaterial} from './roleplay-side-chat.js'
 import {mvuPlayerEditExpectedV1} from './roleplay-mvu-player-expected.js'
 import {publishSideChatBridge} from './roleplay-side-chat-bridge.js'
 import {createCommunityPresets} from './community-presets.js'
+import {createCommunityMacroEvaluator} from './community-preset-macros.js'
+import {renderAuxiliaryPresetInstructions} from './community-preset-execution.js'
 import {normalizeCommunityRegexes,communityTavernRegexDto,communityRegexesFromTavernDto,communityTavernRegexRawV1}
   from './community-preset-import.js'
 import {createCommunityPresetVariables} from './community-preset-variables.js'
@@ -1589,6 +1591,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resumeMemoryWork,
     resumeStatusMaintenance,
   } = createRoleplayTaskHost({
+    auxiliaryInstructions:(session,kind)=>[
+      'status','decision','schema-maintenance','memory','character-perception','character-offscreen',
+    ].includes(kind)?auxiliaryPresetInstructions(session.id):undefined,
     storyEntryReader,
     observeRecords:inputState.observeDomainChanges,
     advancedCard:readNativeCardForRequest,
@@ -2417,9 +2422,17 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     }},
   })
   function communityAliases(sid:string) {
-    return {user:userValues(sid).name,user_gender:userValues(sid).gender,
-      char:String([...T.cards.entries()].filter(([key,card])=>key.startsWith(sid+'__')&&card?.kind!=='user')
-        .sort(([a],[b])=>a.localeCompare(b))[0]?.[1]?.name??'角色')}
+    const user=userValues(sid)
+    const first=[...T.cards.entriesPrefix(sid+'__')].filter(([,card])=>(card as {kind?:string})?.kind!=='user')
+      .sort(([a],[b])=>a.localeCompare(b))[0]?.[1] as {name?:string}|undefined
+    return {user:user.name,user_gender:user.gender,char:String(first?.name??'角色')}
+  }
+  function auxiliaryPresetInstructions(sid:string) {
+    return renderAuxiliaryPresetInstructions(communityPresets.auxiliaryPrompts(sid),()=>{
+      const variables=communityVariables.readDisplayValues(sid)
+      return createCommunityMacroEvaluator({seed:sid,pickSeed:sid,clockEpochMs:Date.now(),
+        aliases:communityAliases(sid),chat:variables.chat,global:variables.global,resolveUnknown:()=>''})
+    })
   }
   function bindUserSourceOwner(agent:CoreAgent) {
     if(userSourceBindings.has(agent))return
@@ -3893,6 +3906,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
     withSourceLock:(id,work,signal)=>withImportLock(id,'ruby-source-capture',work,signal)})
   rubyOwner=createRoleplayRubyOwnerV1({table:T.branch,capture:rubyCapture.capture,
+    auxiliaryInstructions:auxiliaryPresetInstructions,
     readAcceptedResult:readCompletedRubyAnalysis,
     recoverAcceptedResult:recoverCompletedRubyAnalysis,
     withSourceLock:(id,work,signal)=>withImportLock(id,'ruby-analysis-publication',work,signal),

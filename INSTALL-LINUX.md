@@ -1,6 +1,6 @@
 # Linux 一键安装
 
-**NextTavern 0.3.0-rc.1 Linux 便携安装。** 脚本准备独立的 Harness 0.2.2-rc.5 Web 环境。从 0.2.x 迁移时请导出需要的资料并选用新目录。
+**NextTavern 0.3.0-rc.2 Linux 便携安装。** 脚本准备独立的 Harness 0.2.2-rc.5 Web 环境。从 0.2.x 迁移时请导出需要的资料并选用新目录。
 
 首次启动默认等待最多 600 秒。若提示“still preparing”，进程仍保留，重新运行 `NextTavern.sh` 或安装器的 `--action start` 可继续等待同一个进程；需要停止时使用 `NextTavern.sh stop` 或安装器的 `--action stop`。更慢的存储可在启动前设置 `NEXTTAVERN_READY_TIMEOUT_MS` 为正整数毫秒，例如 `900000`；它只控制安装器就绪等待，与模型首响应设置分别生效。
 
@@ -120,9 +120,9 @@ sh NextTavern-Setup.sh --action stop
 
 ## 下载
 
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh)
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/nexttavern-setup.tgz)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1)
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh)
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/nexttavern-setup.tgz)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2)
 
 下载后先校验再运行是个好习惯：
 

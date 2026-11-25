@@ -1,9 +1,9 @@
 # Contributing
 
-NextTavern `0.3.0-rc.1` requires Harness `0.2.2-rc.5` or newer and covers Web and
-official Windows Desktop. Install it from npm or GitHub Releases. For a release
-rebuild, use the complete public source archive or tag `v0.3.0-rc.1`; the `main`
-branch continues to change. See [CHANGELOG](CHANGELOG.md) for version details.
+NextTavern `0.3.0-rc.2` requires Harness `0.2.2-rc.5` or newer and covers Web and
+official Windows Desktop. Use the complete public source archive or tag
+`v0.3.0-rc.2` for a release rebuild; the `main` branch continues to change. See
+[CHANGELOG](CHANGELOG.md) for version details.
 
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 

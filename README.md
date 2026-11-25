@@ -4,9 +4,9 @@
 
 **NextTavern 是 DeepSeek Harness 的长篇角色扮演插件。** 导入社区卡、选择作者开场，在「酒馆」里操作卡内前端。数值、世界书和分析材料随剧情推进。你可以回到已保存的情节另开世界线，也可以把正文和自己的角色卡导出。
 
-**0.3.0-rc.1** · 最低 **DeepSeek Harness 0.2.2-rc.5** · Web / 官方 Windows Desktop · GPL-3.0-only
+**0.3.0-rc.2** · 最低 **DeepSeek Harness 0.2.2-rc.5** · Web / 官方 Windows Desktop · GPL-3.0-only
 
-[GitHub 发行包](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [下载安装](#一键安装) · [0.3 新变化](#03-有什么新变化) · [核心能力](#核心能力) · [开始体验](#开始体验) · [官网](https://a86582751.github.io/dsh-nexttavern/) · [更新日志](CHANGELOG.md) · [截图集](SCREENSHOTS.md) · [Android 路线](#android) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[RC2 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [下载安装](#一键安装) · [0.3 新变化](#03-有什么新变化) · [核心能力](#核心能力) · [开始体验](#开始体验) · [官网](https://a86582751.github.io/dsh-nexttavern/) · [更新日志](CHANGELOG.md) · [截图集](SCREENSHOTS.md) · [Android 路线](#android) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![NextTavern 0.3 的酒馆主页，启用自有皮肤](screenshots/v03-cover.webp)
 
@@ -34,7 +34,7 @@
 
 1. 安装并打开 DeepSeek Harness。这里提供已验证的 **0.2.2-rc.5** 固定版本，方便在宿主更新后仍能下载这一版。[下载官方 Windows x64 安装程序](https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe)
 2. 打开「设置 → 插件」，点击「添加插件」旁的下拉箭头，选择「安装第三方插件」。
-3. 在安装框填入 `dsh-nexttavern@0.3.0-rc.1`，点击「安装」。安装完成后选择「立即启用」，再完整退出并重新打开桌面应用。
+3. 在安装框填入 `dsh-nexttavern@0.3.0-rc.2`，点击「安装」。安装完成后选择「立即启用」，再完整退出并重新打开桌面应用。
 
 桌面安装框接受 npm 包名、Git 地址和本地安装源。体验本版请用上面的 npm 包名和版本。需要从本地归档安装或使用随附的 `dsh.cmd` 时，见[手动安装](#安装)。
 
@@ -43,23 +43,23 @@
 **Web 已安装兼容 Harness。** 停止对应宿主后，安装本版并重新启动：
 
 ```powershell
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 dsh web --host 127.0.0.1
 ```
 
 首次使用 Web，请先准备 Node.js **24.9+** 与宿主 `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`。
 
-如果 npm 源尚未同步，可从 [GitHub 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) 下载 `dsh-nexttavern.tgz`，按[本地归档安装](#安装)操作。
+如果 npm 源尚未同步，可从 [GitHub 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) 下载 `dsh-nexttavern.tgz`，按[本地归档安装](#安装)操作。
 
 从 0.2.x 迁移时选择新目录。需要固定端口或本地归档，可按[手动安装](#安装)操作。
 
 ### Windows
 
-新装便携 Web 环境可下载 [x64 安装器](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.exe) 或 [ARM64 安装器](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup-arm64.exe)。安装器准备便携 Harness 与快捷方式。[Windows 安装指南](INSTALL-WINDOWS.md)
+新装便携 Web 环境可下载 [x64 安装器](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe) 或 [ARM64 安装器](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe)。安装器准备便携 Harness 与快捷方式。[Windows 安装指南](INSTALL-WINDOWS.md)
 
 ### Linux
 
-[Linux 安装脚本](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh) 支持 x86_64 和 aarch64 的 glibc 配方，使用便携运行时和独立目录。[Linux 安装指南](INSTALL-LINUX.md)
+[Linux 安装脚本](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh) 支持 x86_64 和 aarch64 的 glibc 配方，使用便携运行时和独立目录。[Linux 安装指南](INSTALL-LINUX.md)
 
 ### Android
 
@@ -460,21 +460,21 @@ flowchart TD
 
 **架构说完，下面是取用与维护这一版需要的材料。** 发布资产如下。
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern.tgz)，含统一插件、预构建 UI、preset、参考卡与运行依赖。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-debug.tgz)。
-- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern.tgz)，含统一插件、预构建 UI、preset、参考卡与运行依赖。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
 
 一键安装器：
 
-- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.exe)（Windows x64）
-- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup-arm64.exe)（Windows on ARM）
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/nexttavern-setup.tgz)（安装器的 npm 归档）
+- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe)（Windows x64）
+- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe)（Windows on ARM）
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/nexttavern-setup.tgz)（安装器的 npm 归档）
 
 校验与来源：
 
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/provenance.json)
-- [完整公开源码归档](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern-0.3.0-rc.1-source.tgz) · [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [npm 固定版本](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.1)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/provenance.json)
+- [完整公开源码归档](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern-0.3.0-rc.2-source.tgz) · [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [npm 固定版本](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.2)
 
 ## 安装
 
@@ -483,7 +483,7 @@ flowchart TD
 退出桌面应用，在其安装目录执行以下命令，再重新打开应用。使用本地归档时，从发行页下载主包并核对 `SHA256SUMS`，将包名换为 `file:` 加归档路径。
 
 ```powershell
-.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
+.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.2
 ```
 
 ### Web 独立环境
@@ -497,13 +497,13 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 $env:DSH_HOME = Join-Path $PWD 'nexttavern-03-home'
 $Workspace = Join-Path $PWD 'nexttavern-03-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 dsh web --host 127.0.0.1 --port 3510
 ```
 
 浏览器中选择刚建的工作区，配置自己的模型供应商，新建会话时选“角色扮演模式”。后续启动仍须使用同一个 `DSH_HOME`，再运行最后一条命令。
 
-也可以从 [v0.3.0-rc.1 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
+也可以从 [v0.3.0-rc.2 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
 
 ```powershell
 dsh plugin --profile web add "file:./dsh-nexttavern.tgz"
@@ -519,7 +519,7 @@ dsh plugin --profile web add "file:./dsh-nexttavern.tgz"
 
 ```powershell
 dsh plugin --profile web remove dsh-nexttavern
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 ```
 
 当前 npm／Release 包已预置 `@google/genai`、`protobufjs` 的完整运行依赖闭包，私有 SDK 在固定目录重新链接也不需要执行它们的安装脚本；持久化组件携带 `koffi` 预构建 bundle。如果仍提示这些包的构建脚本未批准，先核对实际版本与来源是否为正式 0.3 npm 包或 Release 归档，保留终端错误与版本信息，隐去密钥后[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)。

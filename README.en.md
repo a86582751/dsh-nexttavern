@@ -4,9 +4,9 @@
 
 **NextTavern is a long-form roleplay plugin for DeepSeek Harness.** Import a community card, choose an authored opening, and play through the card’s own interface in Tavern. State, Worldbooks, and analysis can carry changes into later scenes. Branch from a saved point or export the manuscript and your character card.
 
-**0.3.0-rc.1** · **DeepSeek Harness 0.2.2-rc.5** or newer · Web / official Windows Desktop · GPL-3.0-only
+**0.3.0-rc.2** · **DeepSeek Harness 0.2.2-rc.5** or newer · Web / official Windows Desktop · GPL-3.0-only
 
-[GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [Install](#one-click-install) · [What’s new](#whats-new-in-03) · [Capabilities](#capabilities) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[RC2 release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [Install](#one-click-install) · [What’s new](#whats-new-in-03) · [Capabilities](#capabilities) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![NextTavern 0.3 home with the bundled skin enabled](screenshots/v03-cover.webp)
 
@@ -34,7 +34,7 @@ When moving from 0.2.x, keep the original environment, export the cards or manus
 
 1. Install and open DeepSeek Harness. This link is pinned to the verified **0.2.2-rc.5** host build. [Download the official Windows x64 installer](https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe)
 2. Open **Settings → Plugins**, open the dropdown next to **Add plugin**, and select **Install third-party plugin**.
-3. Enter `dsh-nexttavern@0.3.0-rc.1`, select **Install**, then enable the plugin. Quit the app and reopen it.
+3. Enter `dsh-nexttavern@0.3.0-rc.2`, select **Install**, then enable the plugin. Quit the app and reopen it.
 
 The desktop installer accepts npm package specs, Git URLs, and local sources. Use the pinned npm spec above for this release. See [Manual installation](#manual-install) for a local archive or the bundled CLI.
 
@@ -43,23 +43,23 @@ The desktop installer accepts npm package specs, Git URLs, and local sources. Us
 **Web with a compatible Harness.** Stop the host, then install this version and restart:
 
 ```powershell
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 dsh web --host 127.0.0.1
 ```
 
 For a first Web install, use Node.js **24.9+** and install the host with `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`.
 
-If your npm registry has not picked up this version yet, download `dsh-nexttavern.tgz` from the [GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) and follow the [local archive steps](#manual-install).
+If your npm registry has not picked up this version yet, download `dsh-nexttavern.tgz` from the [RC2 release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) and follow the [local archive steps](#manual-install).
 
 Use a fresh directory when migrating from 0.2.x. For a fixed port or local archive, see [manual install](#manual-install).
 
 ### Windows
 
-Use the [x64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.exe) or [ARM64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup-arm64.exe) to prepare a portable Web environment and shortcuts. [Windows guide](INSTALL-WINDOWS.md)
+Use the [x64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe) or [ARM64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe) to prepare a portable Web environment and shortcuts. [Windows guide](INSTALL-WINDOWS.md)
 
 ### Linux
 
-The [Linux setup script](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh) includes glibc recipes for x86_64 and aarch64 and prepares a portable runtime in a separate directory. [Linux guide](INSTALL-LINUX.md)
+The [Linux setup script](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh) includes glibc recipes for x86_64 and aarch64 and prepares a portable runtime in a separate directory. [Linux guide](INSTALL-LINUX.md)
 
 ### Android
 
@@ -399,15 +399,15 @@ flowchart TD
 
 ## Downloads
 
-- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, preset, reference cards and runtime dependencies.
-- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-debug.tgz).
-- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
+- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, preset, reference cards and runtime dependencies.
+- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-debug.tgz).
+- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
 
-Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
+Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
 
-Source: [complete public source archive](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern-0.3.0-rc.1-source.tgz) · [release notes](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [exact npm version](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.1).
+Source: [complete public source archive](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern-0.3.0-rc.2-source.tgz) · [release notes](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [exact npm version](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.2).
 
-Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
+Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
 
@@ -416,7 +416,7 @@ Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/
 Quit the desktop app, run the following command from its installation directory, and reopen it. For a local archive, download the main package from the release, check it against `SHA256SUMS`, and replace the package spec with `file:` followed by the archive path.
 
 ```powershell
-.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
+.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.2
 ```
 
 ### Standalone Web setup
@@ -430,13 +430,13 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 $env:DSH_HOME = Join-Path $PWD 'nexttavern-03-home'
 $Workspace = Join-Path $PWD 'nexttavern-03-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 dsh web --host 127.0.0.1 --port 3510
 ```
 
 Select the new workspace in the browser, configure your provider and pick the roleplay preset for a new session. For later starts, set the same `DSH_HOME` and run the last command.
 
-Alternatively download the main archive from [v0.3.0-rc.1](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
+Alternatively download the main archive from [v0.3.0-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
 
 ```powershell
 dsh plugin --profile web add "file:./dsh-nexttavern.tgz"
@@ -452,7 +452,7 @@ If an unsuccessful official install left the package installed but its bundle un
 
 ```powershell
 dsh plugin --profile web remove dsh-nexttavern
-dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 ```
 
 The current npm and Release packages include the complete runtime dependency closure for `@google/genai` and `protobufjs`. Relinking private SDKs at their fixed directories also avoids those install scripts, and the persistence component carries a prebuilt `koffi` bundle. If these packages still trigger build-script permission errors, first verify the actual version and source are the official 0.3 npm package or Release archive. Preserve the error and versions for a report, removing keys and private content first.

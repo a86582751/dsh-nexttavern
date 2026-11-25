@@ -46,6 +46,9 @@ test('product host routes share one browser source and drain before provider res
   const f = await fixture({hostMode:'active'})
   try {
     assert.deepEqual(f.graph().sort(), ['dsh-nexttavern','fixture-owned-provider'])
+    assert.ok([...f.ctx.loader.entries()].some((entry:any)=>
+      entry.options.name==='fixture-owned-provider'&&entry.fiber?.state===2),
+    'the active replacement exposes its package name to plugin-market discovery')
     assert.equal(f.active.get('hostRoutes'),'host')
     await f.update([{id:'nexttavern',disabled:true}])
     assert.equal(f.active.has('hostRoutes'),false)
@@ -79,6 +82,14 @@ test('product waits for native async services awakened by its replacement provid
     await f.update([{id:'nexttavern',disabled:true}])
     assert.equal(f.ctx.get('lateConsumer'),undefined)
     assert.equal(f.ctx.get('entryProbe').owner,'official')
+  } finally {await f.close()}
+})
+
+test('product waits for a required native sibling still being imported by Loader',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({lateNativeDependency:'import'})
+  try {
+    assert.equal(f.ctx.get('lateConsumer')?.ready,true)
   } finally {await f.close()}
 })
 

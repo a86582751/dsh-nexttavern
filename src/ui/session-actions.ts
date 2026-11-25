@@ -456,6 +456,11 @@ export function createRoleplayActions({sessionsService,
     throw new Error('等待分支生成完成超时；分支仍保留为待处理状态，可稍后切换回来查看')
   }
 
+  const readAssistantEditText = async (sessionId: string, messageId: string, seq: number) => {
+    const result = await branchRequest({action:'read-assistant-edit-text',sessionId,messageId,seq})
+    return String(result.text ?? '')
+  }
+
   const replaceMessage = async ({ sessionId,
        role,
        seq,
@@ -466,7 +471,7 @@ export function createRoleplayActions({sessionsService,
        schemaTaskEdit?: SchemaTaskEditIntent} & ({role: 'user';
        seq: number;
        messageId?: string} | {role: 'assistant';
-       seq?: number;
+       seq?: never;
        messageId: string})) => {
     const result = await retryBranchMutation({
       action: 'replace-message', sessionId, role, seq, messageId, text,
@@ -772,9 +777,9 @@ export function createRoleplayActions({sessionsService,
     } finally {sourceHost?.dispose()}
   })
 
-  const forkWithoutUserTurn = async ({ sourceSessionId, messageId }: {sourceSessionId: string; messageId?: string}) => {
+  const forkWithoutUserTurn = async ({ sourceSessionId, userSeq }: {sourceSessionId: string; userSeq: number}) => {
     const prepared = await branchRequest({
-      action: 'prepare', sessionId: sourceSessionId, messageId, kind: 'delete-user',
+      action: 'prepare', sessionId: sourceSessionId, userSeq, kind: 'delete-user',
     })
     const created=await branchRequest({action:'create-worldline',operationId:prepared.operationId,sessionId:sourceSessionId})
     const childId=created.childSessionId
@@ -818,6 +823,7 @@ export function createRoleplayActions({sessionsService,
       createFirstTurnBranch,
       waitForBranchOperation,
       replaceMessage,
+      readAssistantEditText,
       forkAndPrompt,
       regenerateProgrammaticOpening,
       forkWithoutUserTurn,

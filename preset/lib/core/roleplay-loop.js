@@ -73,15 +73,29 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     ctx.on('agent/request', async (payload, next) => {
         const config = await next(), agent = payload.agent;
         await ensureSessionHistory(agent.session, payload.signal);
-        if (isRoleplaySession(agent.session) && !(Number(agent.options?.subagentDepth) > 0))
-            submissionBindings.begin(payload, inputBinding?.(agent)?.readClaimedMaintenanceInput());
-        if (isRoleplaySession(agent.session) && !(Number(agent.options?.subagentDepth) > 0) && agent.cancel)
-            requestSignals.set(agent.session, { agent, turn: payload.turn, step: payload.step, signal: payload.signal });
+        if (isRoleplaySession(agent.session) && !(Number(agent.options?.subagentDepth) > 0)) {
+            const binding = inputBinding?.(agent);
+            submissionBindings.begin(payload, binding?.readClaimedMaintenanceInput()?.messages ?? binding?.readClaimedMessages());
+            if (agent.cancel)
+                requestSignals.set(agent.session, { agent, turn: payload.turn, step: payload.step, signal: payload.signal });
+        }
         return config;
     });
     ctx.on('llm/stream', (options, next) => {
-        submissionBindings.capture(options);
-        return next();
+        const request = submissionBindings.capture(options);
+        const stream = next();
+        if (!request)
+            return stream;
+        return (async function* () {
+            for await (const chunk of stream) {
+                // Settle the dispatched generations before Native ends the turn and
+                // its idle handlers can recover unfinished obligations.
+                if (chunk.type === 'finish' && chunk.reason.kind === 'error') {
+                    await tavernTasks.rejectInlineRequest(request.session, request.tasks, chunk.reason.failure);
+                }
+                yield chunk;
+            }
+        })();
     }, { global: true });
     ctx.on('agent/assistant-stream', ({ agent, frame }) => {
         const request = requestSignals.get(agent.session);
@@ -345,6 +359,17 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
             const internal = original.length > 0 && original.every(message => message.source?.kind === 'roleplay-tasks'
                 && message.source.form === 'phase' && message.source.stage === 'management');
             if (internal) {
+                const nominated = original.flatMap(message => {
+                    const tasks = inlineTaskEnvelope(textOf(message.content));
+                    return Array.isArray(tasks) ? tasks : [];
+                });
+                if (nominated.length && !nominated.some(({ id, generation }) => {
+                    const job = tavernTasks.contextJob(session, id);
+                    return job && job.generation === generation && (job.status === 'queued' || job.status === 'running');
+                })) {
+                    input.completeWithoutRequest(inputStep);
+                    return { ...decision, messages: [] };
+                }
                 const workflowWake = original.some(message => message.source?.jobId
                     && ['card-import', 'card-export', 'card-convert', 'novel-export'].includes(String(message.source.jobKind)));
                 if (workflowWake) {

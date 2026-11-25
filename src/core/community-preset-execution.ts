@@ -7,6 +7,7 @@ import type {
 import type {CommunityPresetPolicy} from './community-presets.js'
 import type {CommunityVariableAttempt} from './community-preset-variables.js'
 import type {CommunityJson,CommunityPresetPrompt,CommunityPromptRole,CommunityMarker} from './community-preset-types.js'
+import {orderedCommunityPresetPrompts} from './community-preset-types.js'
 import type {produceRoleplayTavernLayoutV1,TavernNativeFinalLoreTextV1} from './roleplay-tavern-layout.js'
 import type {TavernLoreEvaluationPlanV1} from './tavern-lore-evaluator-types.mjs'
 import {createCommunityMacroEvaluator} from './community-preset-macros.js'
@@ -31,6 +32,23 @@ const replayOwned=(row:Row)=>Object.hasOwn(object(row.message.source),'replaySta
 const plain=(row:Row)=>['user','assistant'].includes(row.role)&&row.message.content.every(block=>
   block.type==='text'&&Object.keys(block).every(key=>key==='type'||key==='text'))
 const clone=<T>(value:T):T=>structuredClone(value)
+
+export function renderAuxiliaryPresetInstructions(prompts: readonly CommunityPresetPrompt[],
+  createMacros: () => ReturnType<typeof createCommunityMacroEvaluator>): string | undefined {
+  let macros: ReturnType<typeof createCommunityMacroEvaluator> | undefined
+  const guidance = prompts.flatMap(prompt => {
+    const source = prompt.content.trim()
+    if (!source) return []
+    if (!source.includes('{{')) return source
+    try {
+      return (macros ??= createMacros()).render(source).trim() || []
+    } catch {
+      // A story-only or malformed macro must not prevent auxiliary work.
+      return []
+    }
+  }).join('\n\n')
+  if (guidance) return '社区预设附加指令。仅采用适用于当前辅助任务的内容，下方任务的目标、工具与结果格式优先。\n\n' + guidance
+}
 
 type CommunityLoreMetadata=readonly {entryId:string;name:string;constant:boolean;dynamic:boolean}[]
 export interface CommunityExecutionInput {
@@ -157,8 +175,7 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
     aliases:{...input.aliases,lastUserMessage:input.inputText,input:input.inputText},
     chat:input.variableAttempt.chat,global:input.variableAttempt.global,outlets,
     ordinary:input.ordinary,shared:input.shared})
-  const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
-  const prompts=(preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier)).filter((p):p is CommunityPresetPrompt=>!!p):preset.prompts)
+  const prompts=orderedCommunityPresetPrompts(preset)
     .filter(prompt=>prompt.enabled&&!prompt.unused&&!prompt.configurationOnly)
   // An outlet reader moved ahead of WI is also a chronology boundary: later
   // writes must wait beside it until finish has bound the actual outlet text.

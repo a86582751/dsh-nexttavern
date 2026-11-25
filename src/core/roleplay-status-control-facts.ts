@@ -162,7 +162,7 @@ function obligation(raw:unknown,sid:string):Data {
     ['specHash','fixedContextHash','storyContextHash','inputBasis','selection','generationKey','startedAt','result',
       'publicationState','publicationError'])
   if(raw['schemaVersion']!==1||raw['sessionId']!==sid||raw['branchId']!==sid||!integer(raw['attempt'],1)
-    ||!integer(raw['updatedAt'])||!['running','completed','waiting-main','retry','stale'].includes(String(raw['state']))
+    ||!integer(raw['updatedAt'])||!['running','completed','waiting-main','retry','failed','stale'].includes(String(raw['state']))
     ||raw['error']!==null&&!text(raw['error'],8192))fail('STATUS_CONTROL_OBLIGATION_INVALID')
   exact(raw['trigger'],['kind','id','via'])
   if(raw['trigger']['kind']!=='turn-end'||!hash(raw['trigger']['id'])||!text(raw['trigger']['via'],512)) {

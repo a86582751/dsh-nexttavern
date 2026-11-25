@@ -1,6 +1,7 @@
 import { keyOf, textOf, estimateTokens } from './roleplay-data.js'
 import { eventsOf, lastSeq, surfaceEntries, canonicalAssistantForTurn, completedAssistantReceiptForTurn, isCompletedTurnEnd } from './roleplay-context.js'
 import { internalTaskSeqs, isInlinePending, awaitTaskAdmissions } from './tavern-tasks.js'
+import { isTaskRequestRejection, taskFailureDetails } from './tavern-task-support.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import type { CompletionDependencies, CompletionSnapshot, CompletionState } from './roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from './roleplay-context.js'
@@ -254,13 +255,17 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
           await T.branch.put(phaseKey,{...cloneBranchRecord(T.branch.get(phaseKey)),state:'waiting-main',error:null})
           return
         }
-        ctx.logger?.warn?.(`roleplay: commit failed: ${String(error)}`)
+        const failure = taskFailureDetails(error)
+        const rejectedRequest = isTaskRequestRejection(failure)
+        const message = rejectedRequest ? failure.label : String((error as {message?:unknown} | null)?.message ?? error).slice(0, 500)
+        ctx.logger?.warn?.(`roleplay: commit failed: ${message}`)
         await T.branch.put(phaseKey, {
           ...cloneBranchRecord(T.branch.get(phaseKey)),
-          state: 'retry',
-          error: String((error as { message?: unknown } | null)?.message ?? error).slice(0, 500),
+          state: rejectedRequest ? 'failed' : 'retry',
+          error: message,
           failedAt: Date.now(),
         }).catch(() => {})
+        if (rejectedRequest) return
         const attempts = Number(st.phaseBAttempts.get(Number(snapshot.turnId)) || 0) + 1
         st.phaseBAttempts.set(Number(snapshot.turnId), attempts)
         // Keep the snapshot until a retry succeeds. A bounded retry avoids

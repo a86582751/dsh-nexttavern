@@ -11,7 +11,7 @@ import { ForkSessionMenuItem } from "./session-actions/ForkSession.js";
 import { PinSessionMenuItem, PinSessionRowButton } from "./session-actions/PinSession.js";
 import { RenameSessionMenuItem, SessionRenameDialog } from "./session-actions/RenameSession.js";
 import { RowActionToast } from "./session-actions/RowActionToast.js";
-import { WorkspacePicker } from "./WorkspacePicker.js";
+import { WorkspacePicker, WorkspacePickerFactory } from "./WorkspacePicker.js";
 import { en, zh } from "./locales.js";
 /** Dictionary namespace owned by this plugin. */
 const NS = 'workspace';
@@ -67,6 +67,7 @@ export function apply(ctx) {
         subscribe: listener => ctx.on('connection/reset', listener),
     };
     const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow');
+    const factoryFlowSource = flowSource('workspace.picker.directoryFlow');
     const openSession = (sessionId) => {
         uiWorkspace.openSession(sessionId);
     };
@@ -179,9 +180,9 @@ export function apply(ctx) {
             shortcuts: ctx.shortcuts.catalog,
         },
     });
-    const pickerInjected = () => ({
+    const pickerInjected = (directoryFlow) => () => ({
         createWorkspace: input => workspaces.create(input),
-        hooks: { directoryFlow: pickerFlowSource },
+        hooks: { directoryFlow },
     });
     // Each registration declares its owned children in the same call; slot
     // injection follows both the owner and declaration HMR lifetimes.
@@ -238,9 +239,16 @@ export function apply(ctx) {
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({
         name: 'conversation.hero.workspace',
         children: { 'conversation.hero.workspace.directoryFlow': { kind: 'single', scope: 'root' } },
-        inject: pickerInjected,
+        inject: pickerInjected(pickerFlowSource),
         locale: NS,
     }, WorkspacePicker));
+    ctx.slots.registerFactory({
+        name: 'workspace.picker',
+        scope: 'root',
+        children: { 'workspace.picker.directoryFlow': { kind: 'single', scope: 'root' } },
+        inject: pickerInjected(factoryFlowSource),
+        locale: NS,
+    }, WorkspacePickerFactory);
 }
 /**
  * The activity a Host `workspace/session-active` refusal reported, or nothing

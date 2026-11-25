@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { taskHash, isInlinePending, decodeTaskRecord, untilAborted } from './tavern-task-primitives.js'
 export { taskHash, isInlinePending, decodeTaskRecord }
-import {TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureDetails, withTavernLock, nativeTaskOutputBudget} from './tavern-task-support.js'
+import {TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureDetails, isTaskRequestRejection,
+  withTavernLock, nativeTaskOutputBudget} from './tavern-task-support.js'
 import {PURPOSES, selectedMainRoute, createModelPolicy} from './tavern-model-policy.js'
 export {TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureDetails, withTavernLock, nativeTaskOutputBudget, PURPOSES, selectedMainRoute, createModelPolicy}
 
@@ -39,7 +40,7 @@ const privateCharacterTask = (kind:string) =>
  * controller. Only native, independently executing children may be awaited.
  */
 export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({table,policy,subagents,isCurrent=()=>true,
-  isHistoricalResultCurrent,canPublishResult,observeRecords,inspectAuthorGeneration}: TaskOptions<S,A>) {
+  isHistoricalResultCurrent,canPublishResult,observeRecords,inspectAuthorGeneration,auxiliaryInstructions}: TaskOptions<S,A>) {
   const nativeResults=new WeakMap<object,{id:string;generation:string}>()
   const nativeResult=(id:string,generation:string) => {const token={};nativeResults.set(token,{id,generation});return token}
   const liveHistoricalResult=(session:S,job:TaskJob) => job.background===true && job.status==='running'
@@ -136,6 +137,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       const live=owned(session,item.job.id)
       if(live.generation!==item.job.generation||terminal.has(live.status))throw new Error('任务已取消或失效')
       const failure=taskFailureDetails(raw)
+      if(failure.code==='INVALID_REQUEST') {
+        const now=Date.now()
+        await table.put(keyOf(live.id),{...live,status:'failed',error:failure.label,failure,failedAt:now,updatedAt:now})
+        throw Object.assign(new Error(failure.label),{failure})
+      }
       const next={...live,generation:randomUUID(),execution:'inline',actualRoute:copy(live.main),status:'queued',
         fallback:{from:item.job.actualRoute,to:copy(live.main),at:Date.now(),reason:failure.category==='timeout'?'timeout':'failed',failure},error:`${failure.label}，已交回主循环`,updatedAt:Date.now()}
       await table.put(keyOf(live.id),next)
@@ -199,7 +205,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if(result.stopReason!=='completed') {
         // The child history is ready before awaiting its terminal result.
         const end=sessionEvents(child.localAgent?.session).findLast(event=>event.type==='turn/end')
-        throw Object.assign(new Error('辅助模型未完成'),{failure:taskObject(end?.data?.reason)?.failure??end?.data?.reason??{code:result.stopReason}})
+        throw Object.assign(new Error('辅助模型未完成'),{failure:end?.data?.reason??{code:result.stopReason}})
       }
       let payload: unknown=result.structured
       if(payload==null) {
@@ -451,7 +457,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
       if (!found) {
         const selection=spec.selection??await policy.resolve(session,kind,agent)
-        found={schemaVersion:independent?2:1,id,sessionId:session.id,branchId:session.id,kind,source:copy(source),sourceHash:taskHash(source),input:copy(input),allowedTools:copy(spec.tools??[]),
+        // This job's effective instructions are owned by the admitted input.
+        // Reattachment and explicit retry reuse them with the same source.
+        const preset=typeof input.system==='string'?auxiliaryInstructions?.(session,kind):undefined
+        const frozenInput=preset?{...input,system:preset+'\n\n'+input.system}:input
+        found={schemaVersion:independent?2:1,id,sessionId:session.id,branchId:session.id,kind,source:copy(source),sourceHash:taskHash(source),input:copy(frozenInput),allowedTools:copy(spec.tools??[]),
           ...(independent?{executionPolicy:spec.executionPolicy}:{}),
           ...selection,...(spec.promptContext?{promptContext:copy(spec.promptContext)}:{}),
           ...(spec.background===true?{background:true,execution:'spawn'}:{}),
@@ -488,7 +498,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       throw new Error('任务来源已变化')
     }
     if (job.status==='completed') {await spec.onAdmission?.(copy(job));return deliver(copy(job.result))}
-    if (terminal.has(job.status)) throw new Error(job.status==='failed'&&job.error ? job.error : '任务已取消或失效，请重建或重试')
+    if (job.status==='failed') throw Object.assign(new Error(job.error??'任务已失败，请重建或重试'),{failure:job.failure})
+    if (terminal.has(job.status)) throw new Error('任务已取消或失效，请重建或重试')
     if (job.execution==='inline') {await spec.onAdmission?.(copy(job));throw new InlinePending(id)}
     // Normal non-main work is admitted for one event-loop turn.  A caller can
     // hold the session gate while it admits a dependent status/decision pair;
@@ -626,12 +637,12 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
           toolFilter:{allow:spec.tools??[]},label:`Tavern:${id}:${job.generation}`,
           ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,authorOwner,prompt:[]}
             :characterBackground||backgroundNotes||isolatedCompaction?{
-            isolatedSystem:String(input.system),
-            prompt:[{type:'text' as const,text:String(input.user)}],
+            isolatedSystem:String(job.input.system),
+            prompt:[{type:'text' as const,text:String(job.input.user)}],
           }:{
             persona:'你是酒馆的专用维护助手。只处理收到的冻结来源和任务，不续写剧情，不创建子代理。',
             prompt:[{type:'text' as const,text:JSON.stringify({taskId:id,generation:job.generation,
-              branchId:session.id,sourceHash:job.sourceHash,...input})}]}),
+              branchId:session.id,sourceHash:job.sourceHash,...job.input})}]}),
         }))
         starting.then(late=>{if(ac.signal.aborted)Promise.resolve().then(()=>late.dispose()).catch(()=>{})},()=>{})
         child=await untilAborted(starting,ac.signal)
@@ -647,24 +658,26 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         if (result.stopReason!=='completed') {
           // Preserve the native terminal failure details for retries.
           const end=sessionEvents(child.localAgent?.session).findLast(e=>e.type==='turn/end')
-          throw Object.assign(new Error('辅助模型未完成'),{failure:taskObject(end?.data?.reason)?.failure??end?.data?.reason??{code:result.stopReason}})
+          throw Object.assign(new Error('辅助模型未完成'),{failure:end?.data?.reason??{code:result.stopReason}})
         }
         const text=taskResultText(result,spec.format)
         const value=spec.format==='workflow'?{finished:true}:spec.format==='text'?text:result.structured??JSON.parse(text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g,''))
         return await submit({session,id,generation:job.generation,value},nativeResult(id,job.generation))
       } catch(error) {
+        let terminalFailure=false
         let superseded=false
         await lock(id,async()=>{
           const live=owned(session,id)
           if (live.generation!==job.generation || terminal.has(live.status)) {superseded=true;return}
           const failure=taskFailureDetails(ac.signal.aborted?ac.signal.reason:error)
-          if(live.background||isolatedCompaction||independent) {
+          terminalFailure=live.background===true||isolatedCompaction||independent||failure.code==='INVALID_REQUEST'
+          if(terminalFailure) {
             await table.put(key,{...live,status:'failed',failure,error:failure.label,failedAt:Date.now(),updatedAt:Date.now()})
             return
           }
           await table.put(key,{...live,execution:'inline',actualRoute:copy(live.main),status:'queued',fallback:{from:job.actualRoute,to:copy(live.main),at:Date.now(),reason:failure.category==='timeout'?'timeout':'failed',failure},error:`${failure.label}，已交回主循环`,updatedAt:Date.now()})
         })
-        if (job.background || isolatedCompaction || independent || signal?.aborted || superseded) throw error
+        if (terminalFailure || signal?.aborted || superseded) throw error
         throw new InlinePending(id)
       } finally {
         clearTimeout(timer);signal?.removeEventListener('abort',abort)
@@ -745,6 +758,17 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     async fail(session: S,id: string,error: unknown) {
       return lock(id,async()=>{const job=publicRecord(session,id);if(terminal.has(job.status))return job
         const next={...job,status:'failed',error:String(error),failure:taskFailureDetails(error),failedAt:Date.now(),updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
+    },
+    async rejectInlineRequest(session:S,tasks:readonly {id:string;generation:string}[],error:unknown) {
+      const failure=taskFailureDetails(error)
+      if (!isTaskRequestRejection(failure)) return
+      await Promise.all(tasks.map(({id,generation})=>lock(id,async()=>{
+        const job=storedTask(table.get(keyOf(id)))
+        if(job?.sessionId!==session.id||job.generation!==generation||job.execution!=='inline'
+          ||terminal.has(job.status))return
+        const now=Date.now()
+        await table.put(keyOf(id),{...job,status:'failed',error:failure.label,failure,failedAt:now,updatedAt:now})
+      })))
     },
     read(session: S,id: string,offset=0,maxChars=64000) {
       const job=publicRecord(session,id), text=JSON.stringify(job.input)

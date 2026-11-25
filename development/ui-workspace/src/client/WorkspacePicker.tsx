@@ -18,7 +18,7 @@ import type {
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/slots.ts'
+import type { DirectoryFlowOwnerProps, WorkspacePickerFactoryProps, WorkspacePickerProps } from './contract/slots.ts'
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
@@ -248,6 +248,15 @@ export function WorkspacePicker({
       selectedId={selectedId}
       onPick={onPick}
       onClose={onClose}
+    />
+  )
+}
+
+export function WorkspacePickerFactory({renderSlot, ...props}: WorkspacePickerFactoryProps) {
+  return (
+    <WorkspacePickFlow
+      {...props}
+      renderDirectoryFlow={owner => renderSlot('workspace.picker.directoryFlow', owner)}
     />
   )
 }

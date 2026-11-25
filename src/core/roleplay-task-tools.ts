@@ -42,7 +42,7 @@ function selectedInlineTasks(messages:readonly GenerateOptions['messages'][numbe
  * cancellation and publication. A cold Agent binds only a new real request. */
 export function createTaskSubmissionBindings() {
   type Request={agent:HostAgent;session:HostSession;turn:number;step:number;signal:AbortSignal;
-    input:ClaimedMaintenanceInput;tasks?:readonly TaskIdentity[]}
+    messageIds:ReadonlySet<unknown>;tasks?:readonly TaskIdentity[]}
   const requests=new Map<string,Request>()
   let calls=new WeakMap<HostAgent,Map<string,Readonly<{signal:AbortSignal;tasks:readonly TaskIdentity[]}>>>()
   return {
@@ -52,15 +52,17 @@ export function createTaskSubmissionBindings() {
         &&new Set(tasks.map(task=>task.kind)).size===tasks.length
     },
     begin({agent,turn,step,signal}: {agent:HostAgent&{session:HostSession};turn:number;step:number;signal:AbortSignal},
-      input:ClaimedMaintenanceInput|undefined) {
+      messages:readonly {id:unknown}[]|undefined) {
       requests.delete(agent.session.id)
-      if(input?.turn===turn)requests.set(agent.session.id,{agent,session:agent.session,turn,step,signal,input})
+      if(messages?.length)requests.set(agent.session.id,{agent,session:agent.session,turn,step,signal,
+        messageIds:new Set(messages.map(message=>message.id))})
     },
     capture(options:GenerateOptions) {
       if(!isAgentLoopRequest(options))return
       const request=options.sessionId?requests.get(options.sessionId):undefined
       if(!request||request.signal!==options.signal)return
-      request.tasks=selectedInlineTasks(options.messages,new Set(request.input.messages.map(message=>message.id)))
+      const tasks=request.tasks=selectedInlineTasks(options.messages,request.messageIds)
+      if(tasks.length)return {session:request.session,tasks}
     },
     observe(session:HostSession,event:ContextEvent) {
       const request=requests.get(session.id)

@@ -124,3 +124,6 @@ export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWor
 export function WorkspacePicker({ open, anchorRef, useWorkspaces, selectedId, onPick, onClose, createWorkspace, useDirectoryFlow, renderSlot, t, }) {
     return (_jsx(WorkspacePickFlow, { t: t, open: open, anchorRef: anchorRef, useWorkspaces: useWorkspaces, createWorkspace: createWorkspace, useDirectoryFlow: useDirectoryFlow, renderDirectoryFlow: owner => renderSlot('conversation.hero.workspace.directoryFlow', owner), selectedId: selectedId, onPick: onPick, onClose: onClose }));
 }
+export function WorkspacePickerFactory({ renderSlot, ...props }) {
+    return (_jsx(WorkspacePickFlow, { ...props, renderDirectoryFlow: owner => renderSlot('workspace.picker.directoryFlow', owner) }));
+}

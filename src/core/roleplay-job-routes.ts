@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { taskPhaseMessage, taskValidationFailure, isInlinePending } from './tavern-tasks.js'
+import { isTaskRequestRejection, type TaskFailure } from './tavern-task-support.js'
 import { decodeTavernCard } from './tavern-card.js'
 import {libraryContentDisposition} from './tavern-library-input.js'
 import { createCardAttachmentSources, createMusicAttachmentSources } from './roleplay-card-attachment.js'
@@ -12,6 +13,15 @@ import { assertSteeringAgent } from './roleplay-task-tools.js'
 import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies, MaintenanceRoutesDependencies, MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 
 const schemaMaintenanceRetryHint='此任务不能单独重试。请重新生成该回复，生成新剧情并重新维护变量。'
+
+function ownerRetryHint(job: Pick<JobRouteRecord,'kind'|'status'|'execution'|'failure'>): string | undefined {
+  if (job.kind === 'schema-maintenance') return schemaMaintenanceRetryHint
+  if (job.status !== 'failed' || job.execution !== 'inline' || !job.failure
+      || !isTaskRequestRejection(job.failure as TaskFailure)) return
+  if (job.kind === 'status') return '请在调整模型或设定后，使用状态栏的「重建状态栏」。'
+  if (job.kind === 'memory') return '请在调整模型或设定后，重新运行导演笔记或对应的记忆操作。'
+  return '请在调整模型或设定后，重新执行产生此任务的操作。'
+}
 
 export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
   resumeCardWorkflows,controlCardWorkflow,cardWorkflows,cardWorkflowKey,tavernTasks,taskAgents,libraryFor,migrateResources,
@@ -32,10 +42,11 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
   const publicJob=(raw: unknown,children?: ReturnType<typeof latestChildJobs>)=>{
     const job=raw as JobRouteRecord
     const child=job.source?.workflowId?null:(children??latestChildJobs()).get(job.id)
+    const retryHint=ownerRetryHint(job)
     return {id:job.id,parentJobId:job.source?.workflowId??null,kind:job.kind,status:job.status,progress:job.progress,
       execution:child?.execution??job.execution,actualRoute:child?.actualRoute??job.actualRoute,
       error:job.error??null,failure:taskValidationFailure(job)??job.failure??null,validationFailures:job.validationFailures??0,
-      ...job.kind==='schema-maintenance'?{retryable:false,retryHint:schemaMaintenanceRetryHint}:{},
+      ...(retryHint?{retryable:false,retryHint}:{}),
       requestId:job.clientRequestId??null,
       resourceId:job.resourceId??job.result?.resourceId??null,createdAt:job.createdAt,completedAt:job.completedAt??null,
       failedAt:job.failedAt??(job.status==='failed'?job.updatedAt??null:null)}
@@ -68,11 +79,12 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
           originalSourceKind:readOriginalSourceKind?.(session)})
       }
       const retryTask=body.action==='retry'?T.branch.get('tavern_job__'+body.jobId) as
-        {sessionId?:string;kind?:string}|undefined:undefined
+        (JobRouteRecord & {sessionId?:string})|undefined:undefined
       // A management turn cannot reopen the original Story's closing lease.
       // Reject before retry replaces its generation or resolves a new Agent.
-      if(retryTask?.sessionId===session.id&&retryTask.kind==='schema-maintenance') {
-        return jsonResponse(409,{ok:false,error:schemaMaintenanceRetryHint})
+      if(retryTask?.sessionId===session.id) {
+        const hint = ownerRetryHint(retryTask)
+        if (hint) return jsonResponse(409,{ok:false,error:hint})
       }
       let agent:JobRouteAgent|undefined
       // Cancellation only retires durable work; it remains available after

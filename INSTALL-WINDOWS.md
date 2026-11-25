@@ -6,7 +6,7 @@
 
 Windows 玩家推荐在官方 DeepSeek Harness 桌面版的插件页面安装 NextTavern。[官方桌面版下载和安装步骤](README.md#官方-windows-桌面版推荐)
 
-**NextTavern 0.3.0-rc.1 Windows 便携安装。** 以下步骤为 Web 准备独立的 Harness 0.2.2-rc.5 环境。从 0.2.x 迁移请使用新目录，例如 `%LOCALAPPDATA%\NextTavern-0.3`。
+**NextTavern 0.3.0-rc.2 Windows 便携安装。** 以下步骤为 Web 准备独立的 Harness 0.2.2-rc.5 环境。从 0.2.x 迁移请使用新目录，例如 `%LOCALAPPDATA%\NextTavern-0.3`。
 
 首次启动默认等待最多 600 秒。若提示仍在准备，进程会保留；再次使用启动入口可继续等待，需要停止时使用停止入口。更慢的存储可在启动前设置环境变量 `NEXTTAVERN_READY_TIMEOUT_MS` 为正整数毫秒，例如 `900000`。它只控制安装器就绪等待，与模型首响应设置分别生效。
 
@@ -104,8 +104,8 @@ Windows 玩家推荐在官方 DeepSeek Harness 桌面版的插件页面安装 Ne
 
 ## 下载
 
-- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.exe)
-- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup-arm64.exe)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1)
+- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe)
+- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2)
 
 已有 Node.js、需要固定端口或明确隔离新目录，请用首页的[官方插件安装步骤](README.md#安装)。无需沿用 alpha.3 的手工 preset 初始化和补丁命令。

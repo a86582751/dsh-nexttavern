@@ -318,7 +318,7 @@ export function apply(ctx: ClientContext) {
       if(--lease.leases===0){lease.host.dispose();if(pendingOpeningHosts.get(key)===lease)pendingOpeningHosts.delete(key)}
     }}
   }
-  const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
+  const { saveState, runMaintenance, replaceMessage, readAssistantEditText, forkAndPrompt, regenerateProgrammaticOpening,
     forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline, readCleanWorldline,
     openSessionPreservingView } = createRoleplayActions(
     {
@@ -370,6 +370,7 @@ export function apply(ctx: ClientContext) {
       confirmWithDialog,
       runCommand,
       replaceMessage,
+      readAssistantEditText,
       forkAndPrompt,
       regenerateProgrammaticOpening,
       forkWithoutUserTurn,

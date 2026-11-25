@@ -94,7 +94,6 @@ import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import { TYPERT } from './typert.js';
 import { ApiSessionAgentController, inspectApiSession, } from './agent.js';
 import { SessionCommandController } from './commands.js';
 import { SessionControlController } from './control.js';
@@ -231,14 +230,6 @@ let SessionController = (() => {
         constructor(ctx, config, internals = {}) {
             super(ctx, 'sessionController', { namespace: 'session' });
             ctx.typert.resources.register('session', { resolve: resolveSessionResource });
-            // The product subtree mounts the owned package by file URL. The host's
-            // Typert loader discovers package-name rows, so this provider owns its
-            // contribution for the same lifetime as the Service backing it.
-            ctx.typert.register({
-                ...TYPERT,
-                invocations: TYPERT.invocations.filter(descriptor => descriptor.service !== 'sessionController'
-                    || typeof Reflect.get(SessionController.prototype, descriptor.implementation ?? descriptor.method) === 'function'),
-            });
             this.agents = new ApiSessionAgentController(ctx);
             this.commands = new SessionCommandController(ctx, this.agents, process.cwd());
             ctx.effect(() => () => this.commands.disposeUserSourceOperations(), 'session-controller: user Source owners');

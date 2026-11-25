@@ -149,6 +149,7 @@ export interface BranchProjection {
 export interface PlayerProjection {
   userMessageId?: string
   assistantMessageId: string | null
+  canTruncate?: boolean
   group: BranchProjection | null
   editConflict?:{operationId:string;requestedText:string;
     reason:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditNotAppliedReason}

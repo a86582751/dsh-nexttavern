@@ -21,8 +21,8 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.3.0-rc.1',
-    developmentLine: '0.3 首个公开候选版',
+    releaseVersion: '0.3.0-rc.2',
+    developmentLine: '0.3 第二个公开候选版',
     harnessLine: 'DeepSeek Harness 0.2.2-rc.5+',
     hero: {
         eyebrow: 'NEXT TAVERN · 你的下一段冒险',
@@ -66,7 +66,7 @@ export const site = {
         primary: { label: '开始你的故事', href: '#install' },
         secondary: { label: '翻开使用手册', href: 'quickstart.html' },
         facts: [
-            { label: '最新发行', value: '0.3.0-rc.1' },
+            { label: '最新发行', value: '0.3.0-rc.2' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
@@ -84,14 +84,14 @@ export const site = {
                     href: 'https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe'
                 },
                 primary: { label: '桌面安装步骤', href: 'quickstart.html#官方-windows-桌面版推荐' },
-                code: 'dsh-nexttavern@0.3.0-rc.1'
+                code: 'dsh-nexttavern@0.3.0-rc.2'
             },
             {
                 id: 'manual',
                 label: 'Web CLI',
                 note: 'Web CLI 需要 Node.js 24.9+。已有兼容宿主可直接运行第二行。',
                 primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
-                code: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.5\ndsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1\ndsh web --host 127.0.0.1'
+                code: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.5\ndsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2\ndsh web --host 127.0.0.1'
             },
             {
                 id: 'windows',
@@ -105,7 +105,7 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.3"'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.3"'
             }
         ]
     },

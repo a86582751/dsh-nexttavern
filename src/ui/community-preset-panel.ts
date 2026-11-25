@@ -1,7 +1,8 @@
 import type * as ReactAPI from 'react'
 import type {CommunityPresetPolicy,CommunitySelection} from '../core/community-presets.js'
 import type {CommunityJson,CommunityPresetPrompt,CommunityPresetV1} from '../core/community-preset-types.js'
-import {communityBetweenOptions,communityPresetControlStateV1,communityPresetParameterValueV1} from '../core/community-preset-types.js'
+import {communityBetweenOptions,communityPresetControlStateV1,communityPresetParameterValueV1,
+  isAuxiliaryCommunityPrompt} from '../core/community-preset-types.js'
 export {communityBetweenOptions} from '../core/community-preset-types.js'
 
 export interface CommunityPanelDependencies {
@@ -33,6 +34,9 @@ export function downloadCommunityJson(value:unknown,name:string) {
 interface PromptDraft {presetId:string;name:string;prompts:CommunityPresetPrompt[];order:string[]}
 interface PlanPreview {changed?:{identifier:string;name:string;before:boolean;after:boolean}[];unresolved?:{id?:string;name?:string}[]}
 export type CommunityPresetView='selection'|'features'|'prompts'|'hidden'|'all'
+type CommunityPanelPolicy=CommunityPresetPolicy&{
+  auxiliary?:ReturnType<import('../core/community-presets.js').CommunityPresets['auxiliaryPolicy']>
+}
 
 export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPanelDependencies) {
   const h=React.createElement
@@ -43,7 +47,7 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     const showSelection=view==='all'||view==='selection'
     const showFeatures=view==='all'||view==='features'
     const showPrompts=view==='all'||view==='prompts'
-    const [policy,setPolicy]=React.useState<CommunityPresetPolicy|null>(null)
+    const [policy,setPolicy]=React.useState<CommunityPanelPolicy|null>(null)
     const [selected,setSelected]=React.useState(''),[preset,setPreset]=React.useState<CommunityPresetV1|null>(null)
     const [draft,setDraft]=React.useState<PromptDraft|null>(null),[query,setQuery]=React.useState('')
     const [showHidden,setShowHidden]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState('')
@@ -53,6 +57,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     const [planLayer,setPlanLayer]=React.useState('structure'),[planSection,setPlanSection]=React.useState('')
     const sequence=React.useRef(0),presetSequence=React.useRef(0),abort=React.useRef<AbortController|null>(null)
     const current=policy&&(scope==='global'?policy.global:policy.effective)
+    const auxiliary=scope==='global'?policy?.auxiliary?.global:policy?.auxiliary?.effective
+    const auxiliaryPrompts=auxiliary?.[selected]??[]
     const working=busy||!!readingFile
     const api=`/api/roleplay/community-presets?sessionId=${encodeURIComponent(sessionId)}`
     const loadPreset=async(id:string,signal?:AbortSignal)=>{
@@ -65,7 +71,7 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
       const ticket=++sequence.current;abort.current?.abort();const controller=new AbortController();abort.current=controller
       setBusy(true);setError('')
       try{
-        const value=await jsonFetch<CommunityPresetPolicy>(api,{signal:controller.signal})
+        const value=await jsonFetch<CommunityPanelPolicy>(api,{signal:controller.signal})
         if(ticket!==sequence.current)return
         setPolicy(value);setPreview(null)
         if(initial)setSelected((scope==='global'?value.global:value.effective).presetId??'')
@@ -91,8 +97,9 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
       if(!policy||busy)return null
       const ticket=++sequence.current;setBusy(true);setError('')
       try{
-        const value=await jsonFetch<CommunityPresetPolicy&{importedId?:string;preview?:PlanPreview}>(api,{method:'POST',
-          headers:{'content-type':'application/json'},body:JSON.stringify({...body,sessionId,scope,expectedRevision:policy.revision})})
+        const expectedRevision=body.action==='select-auxiliary'?policy.auxiliary?.revision:policy.revision
+        const value=await jsonFetch<CommunityPanelPolicy&{importedId?:string;preview?:PlanPreview}>(api,{method:'POST',
+          headers:{'content-type':'application/json'},body:JSON.stringify({...body,sessionId,scope,expectedRevision})})
         if(ticket!==sequence.current)return null
         if(body.action==='preview-plans'){setPreview(value.preview??{});return value}
         setPolicy(value);setPreview(null);if(clearDraft)setDraft(null)
@@ -113,8 +120,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     const input=(label:string,value:string,onChange:(value:string)=>void,type='text',disabled=false)=>h('label',null,label,
       h('input',{className:'dsh-rp-input','aria-label':label,type,value,disabled:working||disabled,
         onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>onChange(event.target.value)}))
-    const checkbox=(label:string,checked:boolean,onChange:(checked:boolean)=>void,disabled=false)=>h('label',{key:label,className:'dsh-rp-row'},
-      h('input',{type:'checkbox','aria-label':label,checked,disabled:working||disabled,
+    const checkbox=(label:string,checked:boolean,onChange:(checked:boolean)=>void,disabled=false,accessibleLabel=label)=>h('label',{key:label,className:'dsh-rp-row'},
+      h('input',{type:'checkbox','aria-label':accessibleLabel,checked,disabled:working||disabled,
         onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>onChange(event.target.checked)}),label)
     const valueFor=(key:string,fallback='')=>values[key]??fallback
     const setValue=(key:string,value:string)=>setValues(before=>({...before,[key]:value}))
@@ -339,8 +346,13 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
             button('取消预设库编辑',()=>setDraft(null))),
           h('div',{className:'dsh-rp-preset-prompts'},promptRows.map(prompt=>h('details',{key:prompt.identifier},
             h('summary',null,prompt.name,prompt.marker?' [标记]':'',prompt.unused?' [未使用]':'',prompt.hidden?' [隐藏]':'',prompt.readOnly?' [只读]':''),
-            checkbox(`启用条目：${prompt.name}`,promptEnabled(prompt),
-              enabled=>togglePrompt(prompt,enabled),!!draft||!canConfigure||prompt.configurationOnly),
+            h('div',{className:'dsh-rp-row'},
+              checkbox(`启用条目：${prompt.name}`,promptEnabled(prompt),
+                enabled=>togglePrompt(prompt,enabled),!!draft||!canConfigure||prompt.configurationOnly),
+              checkbox('应用到后台任务',auxiliaryPrompts.includes(prompt.identifier),
+                enabled=>void mutate({action:'select-auxiliary',presetId:selected,promptId:prompt.identifier,enabled}),
+                !!draft||!canConfigure||!policy?.auxiliary||!isAuxiliaryCommunityPrompt(prompt),
+                `应用到后台任务：${prompt.name}`)),
             prompt.configurationOnly&&h('p',{className:'dsh-rp-muted'},'插件配置条目，不作为提示词发送。'),
             draft&&h('div',null,input(`名称：${prompt.identifier}`,prompt.name,name=>changePrompt(prompt.identifier,{name}),'text',prompt.readOnly||prompt.configurationOnly),
               h('label',null,'角色',h('select',{'aria-label':`角色：${prompt.identifier}`,disabled:working||prompt.readOnly||prompt.configurationOnly,value:prompt.role,

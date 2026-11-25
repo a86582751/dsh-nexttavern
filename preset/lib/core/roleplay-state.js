@@ -184,10 +184,13 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
                 try {
                     if (endedTurns.has(activeTurn) && !(canonicalByTurn ??= canonicalAssistantByTurn(session)).has(activeTurn)) {
                         const context = userForkContext(session, Number(event.seq));
-                        const recovery = locatePlayerRecoveryTarget(session, Number(context.event.seq));
+                        const recovery = locatePlayerRecoveryTarget(session, Number(context.event.seq), context);
                         if (!recovery)
                             continue;
                         failedTurnRecoveryByTurn[String(activeTurn)] = Number(context.event.seq);
+                        const userAction = userActionsBySeq[String(context.event.seq)];
+                        if (userAction)
+                            userAction.canTruncate = true;
                         let membership = failedForkMembership(session, context.event, forkLookup);
                         // A historical child can belong to a recovery group whose anchor
                         // points at its failed root.  Repair that root, rather than

@@ -12,7 +12,7 @@ import type {CommunityMacroWrite} from './community-preset-macros.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 import type {TavernEjsPresetCatalogV1} from './tavern-template-ejs-host-types.mjs'
 import type {AuthorPersistentScopeReplaceV1} from './roleplay-author-scope-types.js'
-import {CommunityAuthorPresetRefusalV1} from './community-preset-types.js'
+import {CommunityAuthorPresetRefusalV1,isAuxiliaryCommunityPrompt,orderedCommunityPresetPrompts} from './community-preset-types.js'
 import type {CommunityJson,CommunityPresetV1,CommunityRegexRule,CommunityIzumiPlanPackV2,
   CommunityPresetPrompt,CommunityPresetDataV1,CommunityAuthorPresetTargetV1,CommunityAuthorPresetOperationV1,
   CommunityAuthorPresetReceiptV1,CommunityAuthorPresetResultV1,CommunityAuthorPresetResolvedTargetV1,
@@ -70,6 +70,14 @@ export interface CommunityPresetTable {
   put(key:string,value:unknown):unknown|PromiseLike<unknown>
 }
 export const COMMUNITY_PRESETS_KEY='community-presets-v1'
+const AUXILIARY_PRESETS_KEY='community-auxiliary-presets-v1'
+type AuxiliaryPromptSelections=Record<string,Record<string,boolean>>
+interface AuxiliaryPresetState {
+  schemaVersion:1
+  revision:number
+  global:AuxiliaryPromptSelections
+  conversations:Record<string,AuxiliaryPromptSelections>
+}
 const emptySelection=():CommunitySelection=>({presetId:null,applySampling:false,prompts:{},contents:{},features:{},regexes:{},regexOrder:null})
 const copy=<T>(value:T):T=>structuredClone(value)
 const object=(value:unknown):Record<string,unknown>=>{
@@ -217,6 +225,51 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
       value=buildPolicy(sessionId);policies.set(root,value)
     }
     return value
+  }
+  function auxiliaryState():AuxiliaryPresetState {
+    return table.get(AUXILIARY_PRESETS_KEY) as AuxiliaryPresetState|undefined
+      ?? {schemaVersion:1,revision:0,global:{},conversations:{}}
+  }
+  function auxiliaryPolicy(sessionId:string) {
+    const state=auxiliaryState(),root=rootOf(sessionId)
+    const local=state.conversations[root]??{}
+    const enabled=(flags:Record<string,boolean>)=>Object.keys(flags).filter(id=>flags[id])
+    const global=Object.fromEntries(Object.entries(state.global).map(([id,flags])=>[id,enabled(flags)]))
+    const effective={...global,...Object.fromEntries(Object.entries(local).map(([id,flags])=>
+      [id,enabled({...state.global[id],...flags})]))}
+    return {revision:state.revision,global,effective}
+  }
+  function selectAuxiliary(sessionId:string,body:Record<string,unknown>) {
+    return withTavernLock(table,AUXILIARY_PRESETS_KEY,async()=>{
+      const current=auxiliaryState(),root=rootOf(sessionId)
+      if(body.expectedRevision!==current.revision)throw Error('后台社区预设已更新，请刷新后重试')
+      const preset=stored().presets.find(preset=>preset.id===body.presetId)
+      const prompt=preset?.prompts.find(prompt=>prompt.identifier===body.promptId)
+      if(!preset||!prompt||!isAuxiliaryCommunityPrompt(prompt))throw Error('该条目无法应用到后台任务')
+      const local=body.scope==='global'?undefined:current.conversations[root]??{}
+      const selection=local??current.global
+      const update={[preset.id]:{...selection[preset.id],[prompt.identifier]:body.enabled===true}}
+      const next={...current,revision:current.revision+1,...local
+        ?{conversations:{...current.conversations,[root]:{...local,...update}}}
+        :{global:{...current.global,...update}}}
+      await table.put(AUXILIARY_PRESETS_KEY,next)
+      return auxiliaryPolicy(sessionId)
+    })
+  }
+  function auxiliaryPrompts(sessionId:string) {
+    if(runtime?.executionEnabled?.(sessionId)===false)return []
+    const state=stored(),root=rootOf(sessionId),id=(state.conversations[root]??state.global).presetId
+    if(!id)return []
+    const auxiliary=auxiliaryState()
+    const local=auxiliary.conversations[root]?.[id]
+    const flags=local?{...auxiliary.global[id],...local}:auxiliary.global[id]
+    if(!flags)return []
+    const selected=new Set(Object.keys(flags).filter(id=>flags[id]))
+    if(!selected.size)return []
+    const {preset}=policy(sessionId)
+    if(!preset)return []
+    return [...orderedCommunityPresetPrompts(preset),...preset.prompts].filter(prompt=>
+      selected.delete(prompt.identifier)&&isAuxiliaryCommunityPrompt(prompt))
   }
   const readonlyPresets=new WeakMap<ReturnType<typeof buildPolicy>,CommunityReadonlyPresetV1>()
   const ejsPresets=new WeakMap<ReturnType<typeof buildPolicy>,TavernEjsPresetCatalogV1>()
@@ -719,7 +772,7 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
       }
     })
   }
-  return {read,policy,readonlyPreset,ejsPreset,readonlyGlobalRegexes,mutate,mutateRegex,ensureControls,
+  return {read,policy,auxiliaryPolicy,selectAuxiliary,auxiliaryPrompts,readonlyPreset,ejsPreset,readonlyGlobalRegexes,mutate,mutateRegex,ensureControls,
     authorCatalog,authorTarget,manage,recoverAuthorOperation,settleAuthorPending,withAuthorRuntime,
     configurations(sessionId:string,presetId:string) {
     const conversationId=rootOf(sessionId)

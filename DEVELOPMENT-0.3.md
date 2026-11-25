@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [正式版本更新日志](CHANGELOG.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-**0.3.0-rc.1 已发布。** 本页保留各阶段的实现、验收与兼容性记录。当前安装、迁移与发行资产见[项目首页](README.md)及[版本发布页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1)。
+**0.3.0-rc.2。** 本页保留各阶段的实现、验收与兼容性记录。RC2 的当前安装与迁移说明见[项目首页](README.md)，发行页：[v0.3.0-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2)。
 
 测试者拿到 0.3 候选归档后，可在 Web 环境运行 `dsh plugin --profile web add "file:<候选归档路径>"`。官方 Windows 桌面版用应用随附的 `resources/runtime/cli/bin/dsh.cmd plugin --profile desktop add "file:<候选归档路径>"`。命令使用已核对的本地候选文件，关闭宿主后安装，再启动并检查插件和会话。
 
