@@ -36,6 +36,7 @@ export interface MessageActionState extends StateReply {
     } | null;
     userActionsBySeq?: Record<string, {
         assistantMessageId?: string;
+        canTruncate?: boolean;
         group?: BranchGroup;
         editConflict?: {
             operationId: string;
@@ -50,10 +51,6 @@ export interface MessageActionState extends StateReply {
         taskArtifact?: TaskArtifactSummary;
     }>;
     numericalState?: {lastTaskResultCanonicalSeq?: number};
-    surfaceNodes?: {
-        seq: number;
-        text?: string;
-    }[];
     internalAssistantMessageIds?: string[];
     internalMaintenanceTurns?: number[];
     failedTurnRecoveryByTurn?: Record<string, unknown>;
@@ -62,7 +59,8 @@ export interface MessageActionState extends StateReply {
     inheritedAssistantMessageIds?: string[];
 }
 type Actions = ReturnType<typeof createRoleplayActions>;
-interface ComponentDependencies extends Pick<Actions, 'replaceMessage' | 'forkAndPrompt' | 'forkWithoutUserTurn' | 'openNativeBranch' | 'retryBranchMutation'> {
+interface ComponentDependencies extends Pick<Actions, 'replaceMessage' | 'readAssistantEditText' | 'forkAndPrompt' |
+    'forkWithoutUserTurn' | 'openNativeBranch' | 'retryBranchMutation'> {
     regenerateProgrammaticOpening?: (input: {sourceSessionId: string; messageId: string; seq: number}) => Promise<unknown>;
     React: typeof ReactAPI;
     isRoleplaySession(id: string): boolean;
@@ -123,6 +121,7 @@ export function createMessageActionComponents({
     confirmWithDialog,
     runCommand,
     replaceMessage,
+    readAssistantEditText,
     forkAndPrompt,
     regenerateProgrammaticOpening,
     forkWithoutUserTurn,
@@ -457,14 +456,13 @@ export function createMessageActionComponents({
                 toast('已保存到当前玩家分支；Agent 回复保持不变');
             }),
             onSend: (text) => perform(async () => {
-                setEditDraft(null);
                 await forkAndPrompt({
                     sourceSessionId: sessionId,
-                    messageId: info?.assistantMessageId,
                     userSeq: seq,
                     kind: 'player-edit',
                     editedText: text,
                 });
+                setEditDraft(null);
             }),
         }) : null;
         return React.createElement(React.Fragment, null, React.createElement('span', {
@@ -484,17 +482,15 @@ export function createMessageActionComponents({
             () => setEditDraft({text: info?.editConflict?.requestedText ?? initialText, conflict: !!info?.editConflict}), {
             disabled: busy || !Number.isSafeInteger(seq)
         }), actionIconButton('删除这条玩家消息及其全部后续内容', ICONS.removeTurn, () => perform(async () => {
-            if (!info?.assistantMessageId)
-                throw new Error('这条玩家消息尚无可安全截断的回复锚点');
             if (!await confirmWithDialog(document, '从这里截断当前剧情？这条玩家消息及全部后续内容不会进入新分支；原始审计日志仍可恢复。', {
                 title: '截断当前剧情', confirmLabel: '确认截断'
             }))
                 return;
             await forkWithoutUserTurn({
-                sourceSessionId: sessionId, messageId: info.assistantMessageId
+                sourceSessionId: sessionId, userSeq: seq
             });
         }), {
-            disabled: busy || !info?.assistantMessageId
+            disabled: busy || (!info?.assistantMessageId && !info?.canTruncate)
         })), editor);
     }
     function AssistantActions(props: AssistantActionProps) {
@@ -503,22 +499,23 @@ export function createMessageActionComponents({
         // Official error tails lack a closing message. A completed story before
         // failed maintenance still owns its ordinary regenerate/version actions.
         const anchor = state?.assistantActionAnchorsByTurn?.[String(props.turn)];
-        const messageId = String(props.messageId || anchor?.messageId || '');
+        const renderedMessageId = String(props.messageId ?? '');
+        const messageId = String(anchor?.messageId || renderedMessageId);
         const taskArtifact = anchor?.messageId === messageId ? anchor.taskArtifact : undefined;
         const lastTaskSeq = state?.numericalState?.lastTaskResultCanonicalSeq;
         const affectedSuffix = !!taskArtifact || (anchor?.messageId === messageId
             && lastTaskSeq !== undefined && anchor.seq <= lastTaskSeq);
         const programmaticOpening = isProgrammaticOpeningAction(state, props.turn, messageId);
-        const initialText = String(props.text || (anchor && state?.surfaceNodes?.find(node => node.seq === anchor.seq)?.text) || '');
+        const initialText = props.messageId === messageId ? String(props.text ?? '') : '';
         const [busy, setBusy] = React.useState(false);
         const [editDraft, setEditDraft] = React.useState<{
-            text: string; taskArtifact?: TaskArtifactSummary; affectedSuffix: boolean;
+            messageId: string; text: string; taskArtifact?: TaskArtifactSummary; affectedSuffix: boolean;
         } | null>(null);
         // 非 roleplay 会话：不渲染任何按钮（普通模式保持原版外观）
         if (state === null || state?.preset !== 'roleplay') {
             return React.createElement('span');
         }
-        if (state?.internalAssistantMessageIds?.includes(String(props.messageId ?? ''))
+        if (state?.internalAssistantMessageIds?.includes(renderedMessageId)
             || state?.internalMaintenanceTurns?.includes(Number(props.turn)))
             return React.createElement('span');
         const validRecoverySeq = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -528,12 +525,13 @@ export function createMessageActionComponents({
         const failureGroup = recoveryAvailable ? state?.failedTurnBranchGroupByTurn?.[String(props.turn)] ?? null : null;
         const group = failureGroup ?? state?.branchGroupsByMessageId?.[messageId] ?? null;
         const deleted = !recoveryAvailable && Array.isArray(state?.deletedBranchMessageIds)
-            && state.deletedBranchMessageIds.includes(messageId);
+            && (state.deletedBranchMessageIds.includes(renderedMessageId) || state.deletedBranchMessageIds.includes(messageId));
         if (deleted)
             return React.createElement('span', {
                 className: 'dsh-rp-deleted'
             }, '此回复版本已删除（只读）');
-        const inherited = Array.isArray(state?.inheritedAssistantMessageIds) && state.inheritedAssistantMessageIds.includes(messageId);
+        const inherited = Array.isArray(state?.inheritedAssistantMessageIds)
+            && (state.inheritedAssistantMessageIds.includes(renderedMessageId) || state.inheritedAssistantMessageIds.includes(messageId));
         const members = Array.isArray(group?.members) ? group.members : [];
         const currentIndex = group ? Math.max(0, Number(group.currentOrdinal) - 1) : -1;
         const perform = async (operation: () => unknown | PromiseLike<unknown>) => {
@@ -564,7 +562,7 @@ export function createMessageActionComponents({
             },
             onSave: (text, mode) => perform(async () => {
                 await replaceMessage({
-                    sessionId, role: 'assistant', messageId, text,
+                    sessionId, role: 'assistant', messageId: editDraft.messageId, text,
                     schemaTaskEdit: {schemaVersion: 1, suffix: 'retain',
                         ...(editDraft.taskArtifact ? {target: {
                             expectedArtifactSha256: editDraft.taskArtifact.sha256, mode: mode ?? 'retain'
@@ -604,10 +602,11 @@ export function createMessageActionComponents({
             disabled: busy || (!messageId && !recoveryAvailable) || (programmaticOpening && !regenerateProgrammaticOpening)
         // Polling can change attached operations without changing the prose.
         // Keep the user's opening snapshot so a concurrent edit is reported.
-        }), actionIconButton(inherited ? '请先切换到该版本所属会话再编辑' : '直接修改当前 Agent 回复', ICONS.edit, () => setEditDraft({
-            text: initialText, taskArtifact: taskArtifact ? {...taskArtifact} : undefined, affectedSuffix
+        }), actionIconButton(inherited ? '请先切换到该版本所属会话再编辑' : '直接修改当前 Agent 回复', ICONS.edit, () => perform(async () => {
+            const text = initialText || (anchor ? await readAssistantEditText(sessionId, messageId, anchor.seq) : '');
+            setEditDraft({messageId,text,taskArtifact:taskArtifact ? {...taskArtifact} : undefined,affectedSuffix});
         }), {
-            disabled: busy || recoveryAvailable || inherited || !messageId || !initialText
+            disabled: busy || recoveryAvailable || inherited || !messageId || (!initialText && !anchor)
         }), actionIconButton(group && members.length > 1 ? '删除当前回复分支' : '至少生成两个版本后才能删除', ICONS.trash, () => {
             perform(async () => {
                 if (recoveryAvailable || !group || members.length <= 1)

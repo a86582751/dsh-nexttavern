@@ -40,7 +40,7 @@ interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
   settings?: boolean
   pendingNestedAddon?: boolean
-  lateNativeDependency?: boolean
+  lateNativeDependency?: true | 'import'
   hostMode?: 'active' | 'failed' | 'pending'
   inventory?: 'valid' | 'mismatch'
   prepareAddons?: (productRoot: string, profileRoot: string) => Promise<{
@@ -169,9 +169,10 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const lateConsumer = path.join(productDir, 'late-consumer.mjs')
   if (options.lateNativeDependency) {
     write(lateNative, `import {setTimeout} from 'node:timers/promises';
+      ${options.lateNativeDependency==='import'?'await setTimeout(120);':''}
       export const inject=['entryProbe'];
       export async function apply(ctx) {
-        await setTimeout(20);
+        ${options.lateNativeDependency===true?'await setTimeout(20);':''}
         ctx.provide('lateNativeService', {ready:true});
       }`)
     write(lateConsumer, `export const inject=['lateNativeService'];

@@ -243,3 +243,32 @@ test('status owner cancellation settles its worker and durable retry before root
   await tick();assert.equal(putAfterStop,0)
   release()
 })
+
+test('status rejects a terminal model request without scheduling it again', async () => {
+  const f=phaseFixture()
+  f.session.events[1]!.data!.source={kind:'user'}
+  const T={...f.tables,status:new Table(),cards:new Table(),worldbook:new Table(),rules:new Table()}
+  T.status.set(`${f.session.id}__spec`,{text:'show location',templateHtml:'<div>location</div>'})
+  const selection={execution:'spawn',main:{provider:'fixture',model:'main'},actualRoute:{provider:'fixture',model:'status'}}
+  let calls=0
+  const owner=createRoleplayStatus({
+    ctx:{get(){},effect(fn:()=>unknown){fn()},logger:{warn(){}}},T,
+    cfg:{statusRetryMs:1},DEFAULT_CONFIG:{statusWorkerTimeoutMs:60000},STATUS_SYSTEM:'status',
+    cloneBranchRecord:structuredClone,storyBranchIsActive:()=>true,taskCancellation,
+    ensureBranch:async()=>{},modelPolicy:{resolve:()=>selection},sameModelRoute:()=>false,
+    retrieveWorldbook:async()=>({text:''}),resolveRoute:session=>({session}),
+    llmJson:async()=>{
+      calls++
+      throw Object.assign(new Error('request rejected by test provider'),{code:'INVALID_REQUEST'})
+    },importRecordKey:(id,importId)=>`${id}__import-${importId}`,spanText:()=>'',
+  } as unknown as StatusDependencies)
+  try {
+    await owner.queueStatusObligation(f.session,f.event,'turn-end')
+    await new Promise(resolve=>setTimeout(resolve,25))
+    assert.equal(calls,1)
+    assert.equal(T.status.get(`${f.session.id}__turn-1-2`)!.state,'failed')
+    assert.equal(T.status.has(`${f.session.id}__panel`),false)
+  } finally {
+    await owner.close()
+  }
+})

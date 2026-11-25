@@ -1,10 +1,33 @@
 # Changelog
 
-按日期倒序，同日按主题合并。**开发源码、文档发布与产品发行分别标明**；旧条目中的版本、计划和验证范围均指当日状态，不能作为当前支持承诺。0.3 仍在开发，当前详情见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+按日期倒序，同日按主题合并。**开发源码、文档发布与产品发行分别标明**。旧条目中的版本、计划和验证范围均指当日状态。当前版本为 0.3.0-rc.2，兼容范围与验收见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-25
+
+### v0.3.0-rc.2
+
+- 修复与 `dsh-connect-workbuddy@5.31.2`、`ds-harness-remote@0.6.7` 共装时的启动失败。允许宿主与 profile 中的同版本 Schemastery，并由官方 Typert loader 注册会话接口。两种组合在隔离 Harness rc.5 Web 环境均已启动。
+- 补齐 rc.5 的工作区选择入口。插件市场可识别已加载的会话控制器、聊天和工作区组件；Windows x64 首装与系统选择窗已验证。
+- 模型以 `HTTP 400 INVALID_REQUEST` 拒绝后台维护任务时，插件在 Native idle 前持久化该代际的 `failed` 终态；无关 job 保留，手动取消可用。实际 Native 失败代际、预设逐条与 Ruby 回归通过；更广的 provider／retry recovery 仍待核实。
+- 修复修改后发送的旧回复锚点错误，并更新保存、重新生成和删除的接线。Native 回归覆盖旧回复 ID 和剧情消息锚点。
+- 每条提示词新增默认关闭的“应用到后台任务”选择，与剧情启用开关独立。普通任务首次准入时冻结 system，Ruby 任务首次准入时冻结计划；之后调整选择不改写旧任务，也不新增模型入口。Chrome Playwright 在隔离 WorkBuddy profile 中确认导入并应用预设后默认未勾选，勾选和取消均持久化，剧情启用框保持关闭。
+
+- Fixed startup alongside `dsh-connect-workbuddy@5.31.2` and `ds-harness-remote@0.6.7`. The profile can resolve an identical Schemastery version, and the official Typert loader registers the session API. Both combinations booted in isolated Harness rc.5 Web profiles.
+- Restored the rc.5 workspace picker. The marketplace recognizes the active session controller, chat, and workspace components. The Windows x64 installer and native picker opening were verified.
+- When a model rejects a background maintenance task with `HTTP 400 INVALID_REQUEST`, the plugin persists a generation-specific `failed` terminal state before Native becomes idle. Unrelated jobs remain intact and manual cancellation works. The real Native failure-generation, per-preset-item, and Ruby regressions passed; broader provider/retry recovery remains unverified.
+- Fixed stale reply anchors for edit-and-send and updated save, regenerate, and delete. Native regressions cover stale reply IDs and canonical story-message anchors.
+- Added a per-prompt, off-by-default “Apply to background tasks” choice, independent of the story-generation toggle. Ordinary tasks freeze their system prompt on first admission, and Ruby tasks freeze their plan; later setting changes do not rewrite existing tasks or add a model entry point. Chrome Playwright in an isolated WorkBuddy profile confirmed preset import and application, the default unchecked state, persisted on/off changes, and the story toggle remaining off.
+
 ## 2026-11-20
+
+### v0.3.0-rc.1
+
+- 公开发布首个 0.3 候选版。最低支持 DeepSeek Harness 0.2.2-rc.5，覆盖 Web 与官方 Windows Desktop。0.2.x 玩家先导出资料，再使用独立目录。
+- 社区原卡可选择作者开场，打开卡内建角、状态栏或终端。MVU 数值随剧情结算并随世界线恢复，Ruby 分析可按开局、轮次或关键词触发并供后续剧情引用。独立世界书支持绑定和触发，社区 JSON 预设可按全局或会话应用。EJS 与 Native 1.2 的入口也已补充。[0.3 能力与使用入口](README.md#核心能力)
+- 侧边聊天、导演笔记、混合检索和世界线导出服务于长篇。修复保存模型供应商时的白屏、Vertex 传输冲突及正文嵌套滚动。
+- The first public 0.3 candidate brings authored openings, interactive author pages, persistent MVU state, scheduled Ruby analysis, standalone Worldbooks, EJS, community presets, and Native 1.2 to Harness 0.2.2-rc.5 and newer. [What’s new](README.en.md#whats-new-in-03) · [Installation and migration](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1)
 
 - 开发版修复共享阅读区把主题内边距加到可用宽度之外的问题。官方主题和酒馆主题下均可用外层滚动阅读长正文。
 - The development build fits themed Reader padding within the available width. Long prose scrolls in the main reading area with either the official or Tavern theme.

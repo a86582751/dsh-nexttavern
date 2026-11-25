@@ -2,6 +2,7 @@
 import { keyOf, textOf, estimateTokens } from './roleplay-data.js';
 import { eventsOf, lastSeq, surfaceEntries, canonicalAssistantForTurn, completedAssistantReceiptForTurn, isCompletedTurnEnd } from './roleplay-context.js';
 import { internalTaskSeqs, isInlinePending, awaitTaskAdmissions } from './tavern-tasks.js';
+import { isTaskRequestRejection, taskFailureDetails } from './tavern-task-support.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 export function createRoleplayCompletion(deps) {
     const { storyBranchIsActive, T, cloneBranchRecord, reconcileNativeFork, ctx, resolveRoute, memoryForContext, publishTurnDecision, llmJson, LEDGER_WORKER_SYSTEM, cfg, CONTINUITY_WORKER_SYSTEM, contextWindowFor, contextWindowKey, svc, sessions, failPendingNativeFork, isRoleplaySession, queueStatusObligation, statusRunStartSeq, recoverStatusObligations } = deps;
@@ -271,13 +272,18 @@ export function createRoleplayCompletion(deps) {
                     await T.branch.put(phaseKey, { ...cloneBranchRecord(T.branch.get(phaseKey)), state: 'waiting-main', error: null });
                     return;
                 }
-                ctx.logger?.warn?.(`roleplay: commit failed: ${String(error)}`);
+                const failure = taskFailureDetails(error);
+                const rejectedRequest = isTaskRequestRejection(failure);
+                const message = rejectedRequest ? failure.label : String(error?.message ?? error).slice(0, 500);
+                ctx.logger?.warn?.(`roleplay: commit failed: ${message}`);
                 await T.branch.put(phaseKey, {
                     ...cloneBranchRecord(T.branch.get(phaseKey)),
-                    state: 'retry',
-                    error: String(error?.message ?? error).slice(0, 500),
+                    state: rejectedRequest ? 'failed' : 'retry',
+                    error: message,
                     failedAt: Date.now(),
                 }).catch(() => { });
+                if (rejectedRequest)
+                    return;
                 const attempts = Number(st.phaseBAttempts.get(Number(snapshot.turnId)) || 0) + 1;
                 st.phaseBAttempts.set(Number(snapshot.turnId), attempts);
                 // Keep the snapshot until a retry succeeds. A bounded retry avoids

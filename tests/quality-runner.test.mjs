@@ -36,6 +36,7 @@ const registry = {
     task('independent', []),
     task('dependent', [], {depends: ['fails']}),
     task('windows-contract', []),
+    {id: 'docs', action: 'docs', modules: []},
     {id: 'generated', action: 'generated', modules: []},
     {id: 'bundle', action: 'bundle', modules: []},
     {id: 'archive', action: 'archive', modules: [], heavy: true},
@@ -122,6 +123,13 @@ try {
   const chinesePlan = makePlan(context, request('module', ['写卡']));
   assert.deepEqual(ids(chinesePlan), ids(filePlan), 'Chinese aliases select the same feature graph');
   assert.equal(ids(chinesePlan).filter(id => id === 'shared').length, 1, 'shared prerequisites run once');
+
+  const screenshots = makePlan(context, request('file', ['screenshots/new.jpg', 'screenshots/android/new.webp']));
+  assert.deepEqual(ids(screenshots), ['docs'], 'unregistered screenshots select only docs');
+  assert.deepEqual(screenshots.reasons.docs, ['screenshots/new.jpg', 'screenshots/android/new.webp']);
+  assert.deepEqual(screenshots.uncovered, []);
+  const otherImage = makePlan(context, request('file', ['screenshots-other/new.jpg']));
+  assert.match(otherImage.uncovered[0], /not registered/, 'the rule does not match a sibling directory');
 
   const unknown = makePlan(context, request('file', ['src/core/unmapped.ts']));
   assert.equal(unknown.tasks.length, 0);
@@ -384,6 +392,8 @@ try {
   const explicitRetired = makePlan(selectionContext, request('file', [retired]));
   assert.match(explicitRetired.uncovered[0], /not registered/, 'explicit missing paths still fail selection');
 
+  writeSelection('screenshots/android/new.png', 'sample screenshot');
+  assert.deepEqual(ids(makePlan(selectionContext, request('changed', [], {base: selectionBase}))).filter(id => id === 'docs'), ['docs']);
   writeSelection('src/core/unregistered.ts', 'export const modified = true;\n');
   writeSelection('src/core/new-source.ts');
   git(['mv', 'src/core/status.ts', 'src/core/renamed-source.ts']);

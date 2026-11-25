@@ -504,7 +504,6 @@ function toolPath(name) {
 const ffmpeg = optimize ? toolPath('ffmpeg') : null;
 const ffprobe = ffmpeg ? toolPath('ffprobe') : null;
 function optimizeImage(source, target, maxWidth) {
-    const png = target.replace(/\.webp$/i, '') + '.png';
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (ffmpeg) {
         try {
@@ -514,14 +513,15 @@ function optimizeImage(source, target, maxWidth) {
                 '-c:v', 'libwebp', '-quality', '82', '-compression_level', '4',
                 target
             ], { stdio: ['ignore', 'ignore', 'pipe'] });
-            return true;
+            return target;
         }
         catch (error) {
             warnings.push('ffmpeg could not convert ' + source + ': copying the original instead');
         }
     }
-    copyFile(source, png);
-    return false;
+    const original = target.replace(/\.webp$/i, path.extname(source));
+    copyFile(source, original);
+    return original;
 }
 function imageSize(file) {
     if (!ffprobe)
@@ -553,9 +553,9 @@ function prepareMedia(sourcePaths) {
             continue;
         }
         const target = path.join(outDir, webp);
-        const converted = optimizeImage(source, target, src.startsWith('images/') ? 2000 : 1600);
-        const finalUrl = converted ? webp : webp.replace(/\.webp$/, '.png');
-        const size = imageSize(path.join(outDir, finalUrl));
+        const output = optimizeImage(source, target, src.startsWith('images/') ? 2000 : 1600);
+        const finalUrl = 'assets/media/' + path.basename(output);
+        const size = imageSize(output);
         mediaRecords.set(src, { url: finalUrl, ...(size ?? {}) });
     }
 }
@@ -739,7 +739,7 @@ function sidebar(activeId) {
         '  <p class="sidebar-title">文档目录</p>',
         groups,
         '  <div class="sidebar-footer">',
-        '    <p>当前发行 <b>' + escapeHtml(site.releaseVersion) + '</b>，GitHub 与 npm latest 同步。<br>0.3 开发中，尚未发布。</p>',
+        '    <p>当前发行 <b>' + escapeHtml(site.releaseVersion) + '</b><br>' + escapeHtml(site.harnessLine) + '</p>',
         '    <p><a href="' + site.repoUrl + '" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a></p>',
         '  </div>',
         '</aside>'
@@ -905,11 +905,13 @@ function landingPage() {
     const formatTagline = (line) => line.replace('，', '，\n');
     const tabs = site.quickInstall.tabs.map((tab, index) => '<button type="button" role="tab" id="tab-' + tab.id + '" aria-selected="' + (index === 0) +
         '" tabindex="' + (index === 0 ? '0' : '-1') + '" aria-controls="install-' + tab.id + '">' +
-        icon(tab.id === 'windows' ? 'windows' : tab.id === 'linux' ? 'linux' : 'terminal') +
+        icon(tab.id === 'desktop' || tab.id === 'windows' ? 'windows' : tab.id === 'linux' ? 'linux' : 'terminal') +
         escapeHtml(tab.label) + '</button>').join('\n');
     const panels = site.quickInstall.tabs.map((tab, index) => [
         '<div class="install-body" id="install-' + tab.id + '" role="tabpanel" aria-labelledby="tab-' + tab.id +
             '"' + (index === 0 ? '' : ' hidden') + '>',
+        tab.download ? '<p><a class="button primary" href="' + escapeHtml(tab.download.href) + '">' +
+            escapeHtml(tab.download.label) + ' <span>↗</span></a></p>' : '',
         '<p>' + escapeHtml(tab.note) + '</p>',
         '<div class="code-block"><div class="code-head"><span>' + escapeHtml(tab.label) + '</span>' +
             '<button class="copy-button" type="button" data-copy>复制</button></div>' +
@@ -975,10 +977,10 @@ function landingPage() {
         '<a class="text-link" href="' + chapter.href + '">' + chapter.label + ' <span>↗</span></a></div>',
         '</article>'
     ].join('\n')).join('\n');
-    const extraFeatures = site.features.filter(feature => !['memory', 'branch', 'agents'].includes(feature.icon)).map(feature => [
-        '<a class="field-entry" href="' + feature.href + '"><span class="field-icon">' + icon(feature.icon) + '</span>',
+    const releaseFeatures = site.features.map(feature => [
+        '<a class="field-entry" href="' + escapeHtml(feature.href) + '"><span class="field-icon">' + icon(feature.icon) + '</span>',
         '<span><b>' + escapeHtml(feature.title) + '</b><span>' +
-            feature.text.replace(/`([^`]+)`/g, '$1') + '</span></span><span class="entry-arrow">↗</span></a>'
+            escapeHtml(feature.text) + '</span></span><span class="entry-arrow">↗</span></a>'
     ].join('')).join('\n');
     const docMap = site.groups.map((group, index) => [
         '<section class="map-column"><p class="eyebrow">CHAPTER / ' + String(index + 1).padStart(2, '0') + '</p>',
@@ -1003,18 +1005,20 @@ function landingPage() {
         '<span class="tape tape-one" aria-hidden="true"></span><span class="tape tape-two" aria-hidden="true"></span>',
         '</figure><span class="hero-coordinate" aria-hidden="true">A NEW CHAPTER AWAITS · EST. 2026</span></section>',
         '<div class="edition-strip"><div><span class="edition-label">旅人告示</span><a href="changelog.html">最新发行 <b>v' +
-            escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p><a href="development-0.3.html">0.3 开发进展 <span>↗</span></a> · 开发中，尚未发布</p></div>',
+            escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p>' + escapeHtml(site.developmentLine) +
+            ' · <a href="#whats-new">0.3 新变化 ↓</a>' +
+            ' · <a href="' + site.releasesUrl + '/tag/v' + escapeHtml(site.releaseVersion) + '">下载与发行说明 ↗</a></p></div>',
+        '<section class="journal-section field-section" id="whats-new"><div class="section-heading compact">',
+        '<h2>0.3 新变化</h2>',
+        '<p>从选作者开场，到操作卡内界面、结算数值，再把这些变化带进后续剧情。</p></div>',
+        '<div class="field-list">' + releaseFeatures + '</div>',
+        '<a class="text-link field-all" href="capabilities.html">查看完整能力与支持范围 <span>↗</span></a></section>',
         '<section class="journal-section chapters-section" id="chapters"><div class="section-heading">',
         '<p class="eyebrow">THE STORY KEEPS UNFOLDING</p><h2>不止是对话。<br>是一段可以走下去的故事。</h2>',
         '<p>NextTavern 把原生 Agent Loop 带进长篇角色扮演。<br>让世界有来处，让选择有去向，让人物有自己的声音。</p></div>',
         chapters, '</section>',
-        '<section class="journal-section field-section"><div class="section-heading compact">',
-        '<p class="eyebrow">PACK YOUR JOURNEY</p><h2>也为你的旅途，备好这些。</h2>',
-        '<p>从一张角色卡，到一部可以带走的小说。</p></div><div class="field-list">' + extraFeatures + '</div>',
-        '<a class="text-link field-all" href="capabilities.html">查看完整能力与支持范围 <span>↗</span></a></section>',
         '<section class="journal-section install-section" id="install"><div class="install-intro">',
-        '<p class="eyebrow">BEGIN YOUR NEXT CHAPTER</p><h2>旅程的第一步，<br>从这里开始。</h2>',
-        '<p>选一个安装方式，准备好模型 API，再带上你喜欢的角色卡。</p>',
+        '<h2>' + escapeHtml(site.quickInstall.title) + '</h2>',
         '<a class="text-link" href="quickstart.html">第一次来？跟着快速开始 <span>↗</span></a>',
         '<div class="installation-note"><b>当前发行 v' + escapeHtml(site.releaseVersion) + '</b><p>' +
             escapeHtml(site.quickInstall.lead) + '</p></div></div>',
@@ -1024,9 +1028,10 @@ function landingPage() {
         '<p class="eyebrow">THE TRAVELER’S HANDBOOK</p><h2>一本手册，随时翻阅。</h2>',
         '<p>按你现在想做的事，找到下一页。</p></div><div class="doc-map">' + docMap + '</div></section>',
         '<section class="journal-section screenshot-invitation"><span class="viewfinder" aria-hidden="true">' + icon('skin') + '</span>',
-        '<div><p class="eyebrow">A GLIMPSE INSIDE</p><h2>故事之外，看看酒馆的模样。</h2>',
-        '<p>游玩、记忆、世界线与日夜主题的实机截图，收在单独一册。</p></div>',
-        '<a class="button ghost" href="screenshots.html">翻开截图集 <span>↗</span></a></section>',
+        '<div><h2>' + escapeHtml(site.showcase.title) + '</h2><p>' + escapeHtml(site.showcase.lead) + '</p></div>',
+        '<a class="button ghost" href="' + site.showcase.link.href + '">' + escapeHtml(site.showcase.link.label) + ' <span>↗</span></a>',
+        '<img class="release-preview" src="' + mediaRecords.get(site.showcase.cover.src).url + '" alt="' +
+            escapeHtml(site.showcase.cover.alt) + '" loading="lazy" decoding="async"></section>',
         '<p class="closing-line">故事未完。我们，下一页见。<span>✦</span></p></main>',
         '<div class="home-mobile-nav">' + sidebar('index') + '</div>'
     ].join('\n');
@@ -1037,7 +1042,7 @@ function landingPage() {
 }
 /* ------------------------------------------------------------------ run */
 function collectImageSources() {
-    const sources = new Set();
+    const sources = new Set([site.showcase.cover.src]);
     for (const page of allPages) {
         const markdown = bodyFor(page);
         for (const match of markdown.matchAll(/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) {

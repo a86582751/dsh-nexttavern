@@ -1,72 +1,79 @@
-![dsh-NextTavern: create a world, step into it, and take it with you.](images/cover.png)
-
 # dsh-NextTavern
 
 [简体中文](README.md) · **English**
 
-> **Latest release: 0.2.9-rc.4.** [Issue #17](https://github.com/a86582751/dsh-nexttavern/issues/17) fixes recoverable compaction after oversized requests and false first-response timeouts while reasoning is still streaming. It retains the rc.3 installation fixes and configurable first-response wait. GitHub and [npm latest](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) both use rc.4.
+**NextTavern is a long-form roleplay plugin for DeepSeek Harness.** Import a community card, choose an authored opening, and play through the card’s own interface in Tavern. State, Worldbooks, and analysis can carry changes into later scenes. Branch from a saved point or export the manuscript and your character card.
 
-> **Installation and host support.** The 0.2.9 release line bundles pinned SDK dependencies for first installation and component relinking. Use [npm dsh-nexttavern](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) or the [v0.2.9-rc.4 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4). The supported host is Harness 0.1.7-rc.2 / web / Session V4. See [Contributing](CONTRIBUTING.md) for source rebuilding.
+**0.3.0-rc.2** · **DeepSeek Harness 0.2.2-rc.5** or newer · Web / official Windows Desktop · GPL-3.0-only
 
-> **0.3 development.** The candidate requires Harness `>=0.2.2-rc.5`. Installation through the CLI and plugin store has been verified with rc.5 on Web and official Windows Desktop. A first install from the store into a running host activates on restart. The public listing continues to use the released npm version. [Development progress](DEVELOPMENT-0.3.md)
+[RC2 release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [Install](#one-click-install) · [What’s new](#whats-new-in-03) · [Capabilities](#capabilities) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-For an available 0.3 candidate archive, use `dsh plugin --profile web add "file:<archive-path>"` on Web or the bundled `resources/runtime/cli/bin/dsh.cmd plugin --profile desktop add "file:<archive-path>"` on official Windows Desktop. Close the host before using the CLI, then reopen it to check the plugin and session.
+![NextTavern 0.3 home with the bundled skin enabled](screenshots/v03-cover.webp)
 
-> **Migrating from 0.2.5 or another old host requires fresh directories.** Export character cards or novels before installing 0.2.9; old sessions are incompatible and novels lack full session state. 0.2.8 → 0.2.9 keeps the same host and session line; see [update, uninstall and rollback](#update-uninstall-and-rollback).
+## What’s new in 0.3
 
-Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. The rc.4 release retains the distribution and installation fixes and addresses Issue #17; broader 0.3 compatibility remains in development. Thank you for helping us improve it with your feedback.
+NextTavern 0.2.9 could already import community cards, preserve the original, consult Worldbooks, render static styling, and apply built-in writing styles. Version 0.3 brings authored openings, interactive pages, state changes, and analysis into the story workflow. On a card with character creation, pick an opening, complete the card’s setup, and continue on that worldline.
 
-The development line runs author pages and helper hooks in the browser's native JavaScript environment. MVU, EJS and persistent-message workflows have controlled Core results. The Worldbook manager now includes standalone JSON import and profile, character and chat bindings. Community preset controls consume the selected scope's working values, including declared profile modules. Ruby provides material reads, manual analysis, preset selection, status, panel and reload controls, with frozen per-card request settings reused on explicit retries. Author source uses a single Native 1.2 document. A real-card development sample now covers character setup, continued Stories, UI regeneration, and new-process numerical and memory recovery. Reader preserves prose alongside author panels. Broader card coverage and complete Native authoring/export workflows remain under validation. See the [0.3 development log](DEVELOPMENT-0.3.md).
+| What changed in 0.3 | What you can do |
+| --- | --- |
+| [Community card import and authored openings](#community-card-import-and-authored-openings) | Preview the default and alternate openings. Play the chosen text with your player name and the values defined for that opening. |
+| [Author interfaces and interaction](#author-interfaces-and-interaction) | Use a card’s character creation form, choice buttons, and status panels in Tavern. Reopen recognized floating interfaces from Frontend Settings. |
+| [MVU game state](#mvu-game-state) | Let items, relationships, and attributes change with the story. Branch from a saved point, inspect the resulting values, or edit them directly. |
+| [Ruby extra analysis](#ruby-extra-analysis) | Schedule analysis by story turn and keywords. Reuse published results in later scenes, or run a task and switch presets from Tavern Management. |
+| [Structured Worldbooks and EJS](#structured-worldbooks-and-ejs) | Import a standalone Worldbook and bind it to a profile, character, or chat. Use triggers and templates to choose what the model sees this turn. |
+| [Community presets and regex](#community-presets-and-regex) | Import community JSON presets and arrange prompts, feature groups, macros, and regex rules at the global or conversation level. |
+| [Native authoring, worldlines, and side chat](#native-authoring-worldlines-and-side-chat) | Edit and share cards in Native 1.2, discuss or revise the setting in side chat, then continue the story and export the selected worldline’s manuscript. |
 
-For 0.3 development progress, read the [development log](DEVELOPMENT-0.3.md). Card authors can follow the [community-card guide](COMMUNITY-CARDS.md), [Native format and complete examples](NATIVE-CARD-FORMAT.md), [state/MVU/Ruby guide](NATIVE-STATE.md), and [preset/regex guide](COMMUNITY-PRESETS.md). These Chinese guides and both reference cards now use the unified Native 1.2 contract, with new-input validation still pending. Native versions describe portable card data; this is an unreleased development format, independently of the 0.3 product release.
+After the refactor, we ran targeted checks on two randomly selected batches of ten original community cards each. Five additional cards all reached a first story turn from their authored openings, with checks for applicable features such as numerical state, status panels, author terminals, and continued play. Further hands-on testing in the official Desktop app led to fixes and follow-up checks for opening confirmation, character creation screens, and reading layouts. Compatibility depends on the card’s APIs, external resources, and model provider. [Real-card testing coverage](DEVELOPMENT-0.3.md#实卡测试覆盖)
 
-**Let your characters think for themselves, and let the world unfold from your choices.**
-
-NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), with SillyTavern character-card compatibility, worldlines, long-term memory, and hybrid keyword + semantic retrieval. A character card, a sudden idea, one choice you refuse to compromise on — any of them can start a story. NextTavern brings the native agent loop to long-form roleplay: the agent looks things up on its own, keeps memory in order and reasons as individual characters, while you hold the direction.
-
-**Create a world, step into it, and take it with you.**
-
-[Online documentation](https://a86582751.github.io/dsh-nexttavern/) · [One-click install](#one-click-install) · [Getting started](#getting-started) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [Capabilities](#capabilities) · [Memory system](#memory-system) · [Architecture](#architecture) · [Public access guide (Chinese)](PUBLIC-ACCESS.md) · [All screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3 development log (Chinese)](DEVELOPMENT-0.3.md)
-
-![Play](screenshots/play.png)
-
-**0.2.9-rc.4** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · project-owned code **GPL-3.0**
-
-Install the host, then use the official [one-command plugin installation](#one-click-install). For a fresh home, fixed port or local archive, see [manual install](#manual-install).
-
-This document is the English counterpart of the Chinese README. The Chinese one is the primary document and carries the same content.
+When moving from 0.2.x, keep the original environment, export the cards or manuscripts you need, and use a fresh home and workspace. [Migration and rollback](#update-uninstall-and-rollback)
 
 ## One-click install
 
-**With Harness already installed, run one command:**
+### Official Windows Desktop app (recommended)
+
+1. Install and open DeepSeek Harness. This link is pinned to the verified **0.2.2-rc.5** host build. [Download the official Windows x64 installer](https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe)
+2. Open **Settings → Plugins**, open the dropdown next to **Add plugin**, and select **Install third-party plugin**.
+3. Enter `dsh-nexttavern@0.3.0-rc.2`, select **Install**, then enable the plugin. Quit the app and reopen it.
+
+The desktop installer accepts npm package specs, Git URLs, and local sources. Use the pinned npm spec above for this release. See [Manual installation](#manual-install) for a local archive or the bundled CLI.
+
+### Web CLI
+
+**Web with a compatible Harness.** Stop the host, then install this version and restart:
 
 ```powershell
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
+dsh web --host 127.0.0.1
 ```
 
-`dsh-nexttavern` is the official npm package name. Some third-party Hub or market directories fall back to Git source installation when they cannot identify the npm source; their catalog still needs a separate update. Use the official command above or a verified Release archive. This release does not establish Git source installation or DSH 0.2 / desktop compatibility.
+For a first Web install, use Node.js **24.9+** and install the host with `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`.
 
-For a first DSH installation, install Node.js 24+ and the host first:
+If your npm registry has not picked up this version yet, download `dsh-nexttavern.tgz` from the [RC2 release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) and follow the [local archive steps](#manual-install).
 
-```powershell
-npm install -g @deepseek-ai/dsh@0.1.7-rc.2
-```
-
-Run `dsh web --host 127.0.0.1`, open the address printed in the terminal, configure your own model and API key, and choose the roleplay preset. The unified plugin prepares its compatibility components, document reader and skin. The skin is installed but off by default. First preparation takes time and network access; later starts reuse verified components.
-
-**Moving from 0.2.5 requires exports and fresh directories.** Do not use the old home or workspace to continue old sessions. See [manual install](#manual-install) for isolation.
+Use a fresh directory when migrating from 0.2.x. For a fixed port or local archive, see [manual install](#manual-install).
 
 ### Windows
 
-For portable runtimes and shortcuts, download [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.exe), or [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup-arm64.exe) on Windows on ARM. Choose a new root when moving from 0.2.5. See the [Windows guide](INSTALL-WINDOWS.md) (Chinese) for steps, unsigned-program prompts and verification limits.
+Use the [x64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe) or [ARM64 installer](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe) to prepare a portable Web environment and shortcuts. [Windows guide](INSTALL-WINDOWS.md)
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh) prepares portable Node.js and launchers for x86_64 and aarch64 (glibc), without root or a system package manager. Use a fresh `--root` when moving from 0.2.5. See the [Linux guide](INSTALL-LINUX.md) (Chinese).
+The [Linux setup script](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh) includes glibc recipes for x86_64 and aarch64 and prepares a portable runtime in a separate directory. [Linux guide](INSTALL-LINUX.md)
+
+### Android
+
+The first Android preview is for **ARM64 phones running Android 11 or newer** (`arm64-v8a`). [Download APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk) · [SHA-256 checksum](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk.sha256) · [Source for this APK](https://github.com/a86582751/dsh-nexttavern/tree/f23fe34609ca88eb7fbe15c0e1656cf0c8355f45).
+
+The signed APK installed successfully on a **Redmi K90 Pro Max (Android 16)**. A live model call also succeeded after signing in with an official DeepSeek account. An x86_64 emulator using simulated services verified startup, custom model setup, streaming chat, embedding indexing, and semantic recall after restart. Allow about 2 GB of free space. This build cannot update a differently signed test build in place; export or back up your data before uninstalling the old app. Android background limits may interrupt the app.
+
+Android is maintained on the independent [`android/mobile-terminal` branch](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal).
+
+<img src="https://raw.githubusercontent.com/a86582751/dsh-nexttavern/07d2c53549ce0be4d9c1ba0867120eb7fa630dc4/screenshots/v03-android-redmi-k90-pro-max.jpg" alt="NextTavern story running on a Redmi K90 Pro Max with Android 16" width="280">
 
 ### Installation and model costs
 
-Installation, byte verification, recovery and removal are program operations with no story-model call. Supply your own API keys; none are included. The local server binds `127.0.0.1`. Story generation and existing background memory/status tasks still incur the configured model's costs; opening a session can resume background maintenance.
+Installation and verification use no model calls. Story generation and enabled background tasks use the models you select. [Remote access guide](PUBLIC-ACCESS.md)
 
 ## Getting started
 
@@ -97,28 +104,64 @@ Use the original PNG that still carries its metadata: a plain avatar, a screensh
 
 After import you can keep working on the character, the worldbook and the writing rules, and the original card plus its extended data are preserved. All three card style fields survive intact; how they interact with presets is your choice, see [style presets](#style-presets).
 
+After import, select an authored opening and open the Tavern tab for the card’s Reader, status panels and interactive interface.
+
+![Selecting a community card opening](screenshots/v03-openings.webp)
+
 ## Capabilities
 
-| Capability | What you get |
+### Community card import and authored openings
+
+Import an original SillyTavern or TauriTavern PNG or JSON. NextTavern saves the uploaded file and brings the characters, embedded lore, opening choices, and supported author extensions into the session. Once selected, the author’s text becomes the first Story with the matching initial values and identity macros. The import report shows which extensions were recognized. [Community card guide](COMMUNITY-CARDS.md)
+
+![Uploading an original community PNG card and reviewing its import in Chat](screenshots/v03-card-import.webp)
+
+### Author interfaces and interaction
+
+Use author-built forms, status panels, or terminals beside the story in Tavern. Reader executes author HTML, CSS, and JavaScript in an isolated browser environment. Supported Helper APIs connect buttons to story input, variables, characters, or Worldbooks. Pictures and audio depend on the author’s resource links. Frontend Settings can reopen recognized floating interfaces. [Author pages and script support](COMMUNITY-CARDS.md)
+
+![An author-built interactive interface running in Tavern](screenshots/v03-author-interface.webp)
+
+### MVU game state
+
+A card can set different starting stamina for each opening, then use supported MVU updates and schemas to change it as the story progresses. Committed attributes, items, and relationships carry forward to the next turn. A branch takes its values from the selected point, and reopening restores its committed state. You can inspect or edit the current values in the status panel. Settled update blocks are omitted from Reader prose and manuscript exports. [State initialization, updates, and recovery](NATIVE-STATE.md)
+
+![An authored MVU status panel shown with story prose](screenshots/v03-mvu.webp)
+
+### Ruby extra analysis
+
+Cards can declare startup tasks, turn positions, keywords, prompts, and output targets through supported `RubyAnalyzer` settings. A task reads the relevant story text, then can publish a successful result to the chat Worldbook for later scenes. Use Ruby Extra Analysis in Tavern Management to run an enabled task, switch presets, or view the result. Analysis runs as a separate model task. [Ruby scheduling and commands](NATIVE-STATE.md)
+
+![The Ruby Extra Analysis panel in Tavern Management](screenshots/v03-ruby.webp)
+
+### Structured Worldbooks and EJS
+
+Import a standalone SillyTavern Worldbook or edit structured entries from an imported card. Bind books to a profile, character, or chat. Authors can make entries constant, trigger them by keyword, chain related entries, and set ordering, insertion position, or budget. Supported EJS templates can read variables and Worldbooks when preparing dynamic text for the current turn. [Worldbooks and triggers](COMMUNITY-CARDS.md) · [Native card and EJS guide](NATIVE-CARD-FORMAT.md)
+
+![Editing a structured community Worldbook entry in Tavern Management](screenshots/v03-worldbook.webp)
+
+### Community presets and regex
+
+Import a community JSON preset and arrange prompt text, order, feature groups, macros, history, and regex rules. Apply it globally or to a particular conversation. Sampling settings have a separate switch. Native writing styles retain system, blended, and card modes. Request regex changes material sent to the model. Display regex changes what the reader sees while keeping the source history available. [Community preset and regex guide](COMMUNITY-PRESETS.md)
+
+![The community preset panel with import and conversation scope controls](screenshots/v03-presets.webp)
+
+### Native authoring, worldlines, and side chat
+
+**Native 1.2** keeps characters, openings, Worldbooks, rules, and author settings in one document. Create a card in conversation or adapt source material, then export the edited card for a fresh session. The original upload remains separately available. [Interactive authoring](#interactive-authoring) · [Complete reference cards](preset/reference/README.md)
+
+**Side chat** can consult current characters, Worldbooks, story, and state. Discuss the next scene or explicitly save a change to the setting, then resume the main story. Branches retain their own story state and memory. Export a manuscript from the selected worldline. [Worldlines](#worldlines-and-branching) · [Manuscript and card export](#from-character-card-to-a-novel-you-can-take-away)
+
+![Side chat open alongside the main story](screenshots/v03-side-chat.webp)
+
+### Long-form tools
+
+| Capability | Where to look |
 | --- | --- |
-| **One-click install** | One official plugin command installs the product and required components; Windows/Linux portable-runtime installers are also available. Old-version migration uses fresh directories. |
-| **SillyTavern / TauriTavern card import** | PNG `chara`/`ccv3` and JSON v1/v2/v3 cards, originals preserved, embedded worldbooks included. |
-| **Frozen settings + hard-cut window + director notes + hybrid retrieval** | Frozen settings injected every turn, never compacted; the window keeps recent complete prose and its tail; background notes carry a source hash and a worldline anchor; history recall in keyword, semantic or hybrid mode. |
-| **Style presets** | A dedicated presets page, scoped to the current conversation, a designated conversation or globally, three style modes, 16 built-in styles and 200 custom slots. |
-| **Long text to character card** | Read a long TXT as a playable card: intensive or coarse reading, source frozen with hashes, every research note traceable to the text, its own semantic index. |
-| **Embedding management** | Online: DashScope, OpenAI-compatible endpoints and OpenAI official. Local: BGE small zh, Qwen3-Embedding 0.6B, Jina Nano / Small INT8, Nomic q8 — no key and no network. |
-| **Multi-model collaboration** | Route prose and memory, card reading and writing, status, decisions and novel export to the models you choose. |
-| **Character agent cluster** | Major characters reason in separate contexts about language, behaviour and intent; the main agent reconciles them into the story. Per-character model overrides. |
-| **Decision card and status bar** | Action suggestions live in a standalone, collapsible, draggable decision card; the author's status HTML/CSS survives import, generation and restore. |
-| **Self-owned skin** | The first own skin, day and night themes, whole interface redrawn from one token set; installed but off by default. |
-| **Worldlines** | Regenerate, edit-and-send and switch versions inside one conversation; an explicit branch creates a new conversation. |
-| **Custom writing rules** | Manage core settings, characters, worldbook, story guidance, style and rules separately, controlling viewpoint, pacing, character knowledge and reply shape. |
-| **On-demand worldbook reading** | The main agent consults locations, factions and background details when the scene needs them, as a queryable reference rather than a fixed dump. |
-| **HTML/CSS reading presentation** | Card HTML/CSS, status templates and regex rules shape the reading view; prose streams while it is written, and author scripts run in a restricted environment. |
-| **One-click novel export** | Turn a chosen worldline into a novel manuscript, or export the full character card; results land in the resource library. |
-| **Resource library** | Cards, story files and exports in one place, sorted by time or name, refreshable and downloadable. |
-| **Interactive character creation** | Start from an idea and build world, cast, opening, style and layout in conversation, checked against twelve completeness items. |
-| **Usage and cache statistics** | Requests, input/output tokens, cache, speed and known cost by session, provider or model, including regenerations, embedding calls and failed attempts. |
+| **Memory and retrieval** | Fixed settings, recent full prose, and source-linked director notes form the story context. Recall older scenes by keyword, semantic, or hybrid search. [Memory](#memory-system) · [Embeddings](#embeddings) |
+| **Character perspectives** | Give key characters their own model or memory perspective. Review character records and optionally enable off-screen reasoning. [Character cluster](#character-cluster) |
+| **Models, reading, and usage** | Pick models per task, see requests, cache activity, and known cost, and use the Tavern skin, status bar, and decision card. [Usage](#usage-statistics) · [Status and decisions](#status-bar-and-decision-card) · [Amber skin](#the-bundled-skin) |
+| **Installation, adaptation, and resources** | Use the official plugin command or a portable Windows or Linux installer. Adapt long text into a card with intensive or coarse reading, and retrieve source files and exports from the resource library. [Install](#one-click-install) · [Long-text adaptation](#long-text-to-character-card) |
 
 ## Memory system
 
@@ -278,7 +321,7 @@ Reading presentation improved in the same pass: the author's status HTML/CSS is 
 
 ## The bundled skin
 
-**Version note:** The warm-paper and NT-emblem visual refresh is still in development and is not included in the current public release. The feature description and screenshots below refer to the currently released version.
+0.3 bundles the Amber skin with warm paper, the NT emblem, and day and night themes. Enable it in Settings.
 
 The project provides its **first own skin, `dsh-nexttavern-amber`**: the whole interface redrawn from one design-token set, with **day and night themes** that change the mood in one switch; a chibi tavern keeper sits in the sidebar with a different illustration per theme; the tavern reading mode in the night theme lies on aged parchment while the author's own ink colours are untouched.
 
@@ -302,7 +345,11 @@ In "tavern management" you adjust characters, world background, story direction,
 
 Prose is readable while it is generated; post-turn status and note maintenance have their own progress. Player actions typed meanwhile enter the native queue.
 
-![Immersive reading](screenshots/immersive.png)
+Authors can format prose with display regex and styles. A card’s own status template can show affinity, trust, or the scene time beside the story. [Presets and regex](COMMUNITY-PRESETS.md) · [State and analysis](NATIVE-STATE.md)
+
+![Story prose rendered in the author's style](screenshots/v03-prose.webp)
+
+![Author-rendered status panel showing scene details and relationship progress](screenshots/v03-author-status.webp)
 
 ## From character card to a novel you can take away
 
@@ -352,35 +399,47 @@ flowchart TD
 
 ## Downloads
 
-- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, sources, preset, reference cards, bundled components, CLI and the optional public-access auth source package.
-- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/dsh-debug.tgz).
-- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
+- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, preset, reference cards and runtime dependencies.
+- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-debug.tgz).
+- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
 
-Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
+Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
 
-Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
+Source: [complete public source archive](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/dsh-nexttavern-0.3.0-rc.2-source.tgz) · [release notes](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2) · [exact npm version](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.2).
+
+Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
 
-For a separate home/workspace and fixed port, use Node.js 24+ and npm. These are PowerShell examples; continue only after each command succeeds.
+### Bundled Desktop CLI
 
-**Before migrating from 0.2.5, export cards or novels and keep the old backup.** Old sessions cannot continue directly and novels lack full state. The example below is for fresh installations or old-host migration: use unoccupied paths for the new home and workspace, without copying the old session database. For an existing 0.2.8 installation, see [update, uninstall and rollback](#update-uninstall-and-rollback).
+Quit the desktop app, run the following command from its installation directory, and reopen it. For a local archive, download the main package from the release, check it against `SHA256SUMS`, and replace the package spec with `file:` followed by the archive path.
 
 ```powershell
-npm install -g @deepseek-ai/dsh@0.1.7-rc.2
-$env:DSH_HOME = Join-Path $PWD 'nexttavern-029-home'
-$Workspace = Join-Path $PWD 'nexttavern-029-workspace'
+.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.2
+```
+
+### Standalone Web setup
+
+For a separate home/workspace and fixed port, use Node.js 24.9+ and npm. These are PowerShell examples; continue only after each command succeeds.
+
+**Before migrating from 0.2.x, export cards or manuscripts and keep a backup.** Use new paths for the home and workspace. Keep the original host for reading full old sessions.
+
+```powershell
+npm install -g @deepseek-ai/dsh@0.2.2-rc.5
+$env:DSH_HOME = Join-Path $PWD 'nexttavern-03-home'
+$Workspace = Join-Path $PWD 'nexttavern-03-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 dsh web --host 127.0.0.1 --port 3510
 ```
 
 Select the new workspace in the browser, configure your provider and pick the roleplay preset for a new session. For later starts, set the same `DSH_HOME` and run the last command.
 
-Alternatively download the main archive from [v0.2.9-rc.4](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
+Alternatively download the main archive from [v0.3.0-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
 
 ```powershell
-dsh plugin --profile web add ./dsh-nexttavern.tgz
+dsh plugin --profile web add "file:./dsh-nexttavern.tgz"
 ```
 
 The old alpha.3 manual preset setup and host byte patches are no longer required. The product uses owned compatibility providers and restores native providers on disable or failed activation. Uploads, attachments and the sidebar use official host capabilities.
@@ -393,10 +452,10 @@ If an unsuccessful official install left the package installed but its bundle un
 
 ```powershell
 dsh plugin --profile web remove dsh-nexttavern
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add dsh-nexttavern@0.3.0-rc.2
 ```
 
-The 0.2.9 npm and Release packages include the complete runtime dependency closure for `@google/genai` and `protobufjs`. Relinking private SDKs at their fixed directories also avoids those install scripts, and the persistence component carries a prebuilt `koffi` bundle. If these packages still trigger build-script permission errors, first verify the actual version and source are the official 0.2.9 npm package or Release archive. Preserve the error and versions for a report, removing keys and private content first.
+The current npm and Release packages include the complete runtime dependency closure for `@google/genai` and `protobufjs`. Relinking private SDKs at their fixed directories also avoids those install scripts, and the persistence component carries a prebuilt `koffi` bundle. If these packages still trigger build-script permission errors, first verify the actual version and source are the official 0.3 npm package or Release archive. Preserve the error and versions for a report, removing keys and private content first.
 
 ## Document extensions
 
@@ -406,9 +465,9 @@ Upload an original document and explain how it should be used. DOCX reading is c
 
 ## Patch and dependency sources
 
-This release pins Harness **0.1.7-rc.2** and pi-ai **0.85.1**. Owned UI, Session Controller, persistence, projection, metering and pi-ai compatibility providers are verified and prepared as independently versioned components. Players do not need to modify installed host files. Package metadata, `provenance.json` and [NOTICE](NOTICE.md) identify their versions, sources and licenses.
+This release supports Harness **0.2.2-rc.5** and newer and bundles pi-ai **0.85.1**. Owned UI, Session Controller, persistence, projection, metering and pi-ai compatibility providers are verified and prepared as independently versioned components. Players do not need to modify installed host files. Package metadata, `provenance.json` and [NOTICE](NOTICE.md) identify their versions, sources and licenses.
 
-0.2.9 includes Google SDK / protobuf runtime dependencies and the prebuilt `koffi` bundle, with matching private-component dependency declarations. npm metadata adds nine related keywords, the documentation homepage, issue tracker and standard repository URL. English and Simplified Chinese titles and descriptions use the host's official `locale/*` exports. These fields help identify the official package; the third-party market catalog still needs a separate update.
+The release includes Google SDK / protobuf runtime dependencies and the prebuilt `koffi` bundle, with matching private-component dependency declarations. npm metadata adds nine related keywords, the documentation homepage, issue tracker and standard repository URL. English and Simplified Chinese titles and descriptions use the host's official `locale/*` exports. These fields help identify the official package; the third-party market catalog still needs a separate update.
 
 - [anydoc](https://github.com/a86582751/dsh-plugin-anydoc) derives from [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc), preserving upstream history and MIT attribution, with owned TypeScript sources.
 - [pi](https://github.com/a86582751/pi) derives from [earendil-works/pi](https://github.com/earendil-works/pi), preserving MIT attribution; the compatibility layer handles stream completion and cleanup across four protocols.
@@ -420,9 +479,7 @@ For public access, explicitly configure the bundled auth plugin, your Cloudflare
 
 ## Update, uninstall and rollback
 
-**0.2.5 → 0.2.9 requires migration, not continuation of old sessions.** Export cards/novels, back up the old directories, then use fresh directories as described above. One-click installers also need a new root. Keep the old installation separate for reading and exporting old material.
-
-**0.2.8 → 0.2.9 is an installation patch on the same host line.** Follow the official plugin update steps below. This release adds no portable-installer in-place upgrade capability; the platform guides retain their existing directory and recovery boundaries.
+**Keep your old installation when moving from 0.2.x to 0.3.** Export the cards or manuscripts you need, back up the old home and workspace, and choose a fresh directory for the new installation.
 
 For updates within a compatible version line: stop the host, back up its home/workspace, check the new release notes, use official `plugin add` with the target package version or archive, and restart to load new modules. Preparation refuses corrupt packages and unknown components, retains versioned components, and reports failures. Rollback requires a matching prior package and backup; never mix another instance's receipts or pins.
 
@@ -447,7 +504,7 @@ npm ci --prefix ./build-tools --ignore-scripts --no-audit --no-fund
 npm run build
 ```
 
-Public sources rebuild the registered browser bundles, including the product and its compatibility providers; the bundled build map lists the current entry points. If you change the sources, update your own version and provenance rather than passing it off as the original release. The full paid behavior acceptance used an alpha.1 candidate. The rc.2 migration received minimal source checks and real local/server installation, without rerunning that full paid suite. A clean VM and real ARM64 devices remain unverified.
+Public sources rebuild the registered browser bundles, including the product and its compatibility providers; the bundled build map lists the current entry points. If you change the sources, update your own version and provenance rather than passing it off as the original release. Web and official Windows Desktop installation and startup were verified with Harness 0.2.2-rc.5. The platform guides describe installer build, contract test and hardware coverage.
 
 ## Community
 

@@ -55,7 +55,7 @@ import { keyOf, sha256, recordSha256 } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, surfaceEntries } from './roleplay-context.js';
 import { createCharacterCluster } from './character-cluster.js';
 import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage, taskHash } from './tavern-tasks.js';
-export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM, inputCurrency, inputCurrencyCurrent, inputHistoricalCurrencyCurrent, inputTaskRecoveryBlockCode, currentTaskClaim, assertCardWorkflow, advancedCard, advancedCardReady, observeRecords, storyEntryReader, characterPrivate, }) {
+export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM, inputCurrency, inputCurrencyCurrent, inputHistoricalCurrencyCurrent, inputTaskRecoveryBlockCode, currentTaskClaim, assertCardWorkflow, advancedCard, advancedCardReady, observeRecords, storyEntryReader, characterPrivate, auxiliaryInstructions, }) {
     const continuationTimers = new Set();
     const authorDialogOwners = new Map();
     let disposed = false;
@@ -200,6 +200,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             && taskDependenciesCurrent(T, session.id, source.dependencies);
     }
     const tavernTasks = createTavernTasks({ table: T.branch, policy: modelPolicy, subagents: ctx.subagents,
+        auxiliaryInstructions,
         async inspectAuthorGeneration(job) {
             if (typeof job.childSessionId !== 'string' || !job.authorExecution)
                 return undefined;

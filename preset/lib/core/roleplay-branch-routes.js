@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/roleplay-branch-routes.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
-import { keyOf, durableSeq, sha256, recordSha256 } from './roleplay-data.js';
+import { keyOf, durableSeq, sha256, recordSha256, textOf } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, isCompletedTurnEnd } from './roleplay-context.js';
 import { jsonResponse } from './roleplay-state.js';
 import { activeOpeningSource } from './roleplay-import.js';
@@ -451,25 +451,27 @@ export function registerBranchRoutes(deps) {
                             const candidate = surface[index];
                             if (candidate?.type !== 'user/message' || candidate.data?.source?.kind !== 'user')
                                 continue;
-                            const context = userForkContext(source, Number(candidate.seq));
                             if (locatePlayerRecoveryTarget(source, Number(candidate.seq))) {
                                 body.userSeq = Number(candidate.seq);
                                 break;
                             }
                         }
                     }
-                    if (!requestedMessageId && (kind === 'player-edit' || kind === 'regenerate')) {
-                        const requestedUserSeq = durableSeq(body?.userSeq);
+                    const requestedUserSeq = durableSeq(body?.userSeq);
+                    const fromPlayer = kind === 'player-edit' || kind === 'delete-user';
+                    if ((fromPlayer && requestedUserSeq !== null)
+                        || (!requestedMessageId && kind !== 'delete-user')) {
                         if (requestedUserSeq === null) {
                             return jsonResponse(400, { ok: false, error: '缺少玩家消息 seq，无法恢复失败轮次' });
                         }
                         const playerContext = userForkContext(source, requestedUserSeq);
-                        const recovery = locatePlayerRecoveryTarget(source, requestedUserSeq);
+                        const recovery = (kind !== 'delete-user' || !playerContext.followingAssistant)
+                            ? locatePlayerRecoveryTarget(source, requestedUserSeq, playerContext)
+                            : null;
                         requestedMessageId = recovery ? '' : assistantMessageId(playerContext.followingAssistant);
                         if (recovery) {
-                            // Failed/incomplete turns have no assistant anchor.  Keep the
-                            // operation valid by using a synthetic player recovery anchor;
-                            // register will create a clean child and replay the prompt.
+                            // A failed turn can be forked at its player input. Registration
+                            // decides whether that input is replayed or truncated.
                             const operationId = randomUUID();
                             const operation = {
                                 schemaVersion: 1,
@@ -506,6 +508,9 @@ export function registerBranchRoutes(deps) {
                         return jsonResponse(409, { ok: false, error: '这个回复版本已经删除；请切换到仍然活动的分支' });
                     }
                     const anchor = locateForkTarget(source, requestedMessageId);
+                    if (fromPlayer && requestedUserSeq !== null && anchor.sourceUserSeq !== requestedUserSeq) {
+                        return jsonResponse(409, { ok: false, error: '这条玩家消息的回复锚点已变化，请重新打开消息后操作' });
+                    }
                     const operationId = randomUUID();
                     const operation = {
                         schemaVersion: 1,
@@ -944,6 +949,17 @@ export function registerBranchRoutes(deps) {
                             recoveryOperationId: body.recoveryOperationId, oldSaveRef: body.oldSaveRef, editRef: body.editRef,
                             ...(body.requestOrigin === undefined ? {} : { requestOrigin: body.requestOrigin }),
                         }) });
+                }
+                if (action === 'read-assistant-edit-text') {
+                    const session = await resolveRoleplaySession(body.sessionId);
+                    if (!session)
+                        return jsonResponse(404, { ok: false, error: '角色扮演会话不存在或无法恢复' });
+                    assertStoryBranchActive(session);
+                    const message = surfaceEvents(session).find(event => event.type === 'assistant/message'
+                        && Number(event.seq) === body.seq && assistantMessageId(event) === body.messageId);
+                    if (!message)
+                        return jsonResponse(404, { ok: false, error: '当前分支中找不到这条 Agent 回复' });
+                    return jsonResponse(200, { ok: true, text: textOf(message.data?.message?.content) });
                 }
                 if (action === 'replace-message') {
                     const session = await resolveRoleplaySession(body?.sessionId);

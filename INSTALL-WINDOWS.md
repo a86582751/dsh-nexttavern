@@ -4,7 +4,9 @@
 
 `NextTavern-Setup.exe` 是便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
 
-**0.2.9-rc.4 Windows 发行版。** 本页下载指向 rc.4，包含此前安装／就绪修复及 Issue #17 上下文恢复修复。请安装到新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.9-rc.4`；中文和空格路径可用，目录须有写入权限，`Program Files` 通常需要管理员权限。无需单独安装全局 pnpm。
+Windows 玩家推荐在官方 DeepSeek Harness 桌面版的插件页面安装 NextTavern。[官方桌面版下载和安装步骤](README.md#官方-windows-桌面版推荐)
+
+**NextTavern 0.3.0-rc.2 Windows 便携安装。** 以下步骤为 Web 准备独立的 Harness 0.2.2-rc.5 环境。从 0.2.x 迁移请使用新目录，例如 `%LOCALAPPDATA%\NextTavern-0.3`。
 
 首次启动默认等待最多 600 秒。若提示仍在准备，进程会保留；再次使用启动入口可继续等待，需要停止时使用停止入口。更慢的存储可在启动前设置环境变量 `NEXTTAVERN_READY_TIMEOUT_MS` 为正整数毫秒，例如 `900000`。它只控制安装器就绪等待，与模型首响应设置分别生效。
 
@@ -23,7 +25,7 @@
 ## 三步完成安装
 
 1. **运行安装器。** 双击下载到的 `NextTavern-Setup.exe`（64 位系统用它），Windows on ARM 设备使用 `NextTavern-Setup-arm64.exe`。它会打开一个原生窗口，不需要额外的框架或运行库。
-2. **选择安装文件夹。** 默认是 `%LOCALAPPDATA%\NextTavern`，也就是你自己账号的本地应用目录。从 0.2.5 迁移时必须选新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.9`。请选择本机磁盘上的普通目录，不要用网络共享路径。
+2. **选择安装文件夹。** 默认是 `%LOCALAPPDATA%\NextTavern`，也就是你自己账号的本地应用目录。从 0.2.x 迁移时必须选新目录，例如 `%LOCALAPPDATA%\NextTavern-0.3`。请选择本机磁盘上的普通目录，不要用网络共享路径。
 3. **等待，然后开始。** 窗口里会显示当前阶段和下载进度。完成后浏览器会自动打开工作台；第一次进入时按提示选择工作区、填写模型供应商，然后在新建会话的预设菜单里切到“角色扮演模式”。
 
 安装过程中途关掉窗口不会留下半套可用环境：重新运行安装器会继续复用已经下载并校验过的文件，不必从头再来。
@@ -60,15 +62,7 @@
 
 ## 升级已有安装
 
-**已有 0.2.8：** 0.2.9 保持同一宿主与会话线，请按首页的[官方插件更新流程](README.md#更新卸载与回滚)操作。本补丁未新增安装器原地升级能力；下面的新目录步骤适用于 0.2.5 旧宿主迁移。
-
-**0.2.5 的旧会话不能直接在 0.2.9 中延续，请安装到新目录。** 新版采用 Harness `0.1.7-rc.2`／Session V4 与统一插件；不要把旧 `home`／会话数据库复制进去，也不要把本次迁移当作原地无损升级。
-
-1. 在旧环境导出需要保留的角色卡或小说；小说稿不包含完整会话状态。
-2. 用 `Stop Next Tavern` 停止旧服务，另行备份旧安装的 `home` 与 `workspace`。
-3. 运行 0.2.9 安装器，选择新的根目录，配置模型，再将原卡或导出的角色卡导入新工作区。
-
-旧目录保持独立，必要时可继续用旧版读取和导出资料。已有 Node.js 的玩家也可以直接采用[官方插件命令](README.md#安装)，明确指定新 `DSH_HOME`。
+从 0.2.x 迁移时先在旧环境导出卡片或小说，停止旧服务并备份原 home 和工作区，再用新的安装根目录。完整旧会话留给原宿主读取。已在兼容的 0.3 环境中安装插件时，可参考[官方插件更新流程](README.md#更新卸载与回滚)。
 
 ## 安全边界
 
@@ -110,8 +104,8 @@
 
 ## 下载
 
-- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.exe)
-- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup-arm64.exe)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4)
+- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup.exe)
+- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/NextTavern-Setup-arm64.exe)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.2)
 
 已有 Node.js、需要固定端口或明确隔离新目录，请用首页的[官方插件安装步骤](README.md#安装)。无需沿用 alpha.3 的手工 preset 初始化和补丁命令。

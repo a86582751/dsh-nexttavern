@@ -8,7 +8,8 @@
  * - WorkspacePicker fills the conversation empty-state hole (menu + error
  *   dialog shared with the browser).
  *
- * Both registrations declare a **directory-flow hole** (`single` kind): the
+ * The browser, hero picker, and reusable `workspace.picker` factory each declare a
+ * directory-flow hole (`single` kind):
  * slot a composed picker package's client half fills with its
  * picking interaction — a renderless native-chooser driver or an in-app
  * browsing dialog. ui-workspace owns the trigger (the "Add workspace…"
@@ -18,9 +19,7 @@
  * including creating a new directory to hand back. That occupant-owned
  * creation is why adding a workspace has a single route: an unoccupied hole
  * leaves the surface with no add affordance at all.
- * Two holes exist because the two menu surfaces are independent slot entries
- * and a hole has exactly one declaring entry — they carry the same owner
- * contract and the same occupant.
+ * Each hole has its own declaring entry and uses the same owner contract.
  *
  * WorkspaceBrowser also declares the two **Session row action lists**: every
  * row of a Session's "..." menu is an entry of
@@ -39,7 +38,7 @@
  * retain every listed Session.
  */
 import type {
-  HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
+  FactoryComponentPropsOf, HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ReactNode } from 'react'
 // Type-only: pull the owner SlotMap merges into programs that resolve the
@@ -124,11 +123,21 @@ export interface SessionRowScheduleOwnerProps {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotFactoryMap {
+    'workspace.picker': {
+      scope: 'root'
+      props: import('@deepseek-ai/dsh-client-ui-conversation/client').EmptyWorkspaceOwnerProps
+      inject: WorkspacePickerInjected
+      locale: 'workspace'
+      children: { 'workspace.picker.directoryFlow': { kind: 'single'; scope: 'root' } }
+    }
+  }
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    'workspace.picker.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Extension seat before the WorkspaceBrowser title; renders in wide sidebar and rail. */
     'sidebar.workspaces.before': { kind: 'list'; scope: 'root'; owner: WorkspaceSlotProps }
     /** Extension action in the WorkspaceBrowser title row before native controls; renders in wide sidebar and rail. */
@@ -203,10 +212,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** The two directory-flow holes; a flow package's client half registers its one component into both. */
+/** Each composed directory picker occupies all three surfaces. */
 export type DirectoryFlowSlotName =
   | 'conversation.hero.workspace.directoryFlow'
   | 'sidebar.workspaces.directoryFlow'
+  | 'workspace.picker.directoryFlow'
 
 /**
  * Directory-picking share both trigger surfaces consume. Occupancy rides the
@@ -505,3 +515,5 @@ export type WorkspacePickerProps =
   & Omit<WorkspacePickerInjected, 'hooks'>
   & PropsHooks<WorkspacePickerInjected['hooks']>
   & PropsLocale<'workspace'>
+
+export type WorkspacePickerFactoryProps = FactoryComponentPropsOf<'workspace.picker'>

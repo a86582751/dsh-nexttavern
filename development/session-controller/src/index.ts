@@ -15,7 +15,6 @@ import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
-import { TYPERT } from './typert.js'
 import {
   ApiSessionAgentController,
   inspectApiSession,
@@ -153,14 +152,6 @@ export class SessionController extends TypertRemoteService {
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     ctx.typert.resources.register('session', { resolve: resolveSessionResource })
-    // The product subtree mounts the owned package by file URL. The host's
-    // Typert loader discovers package-name rows, so this provider owns its
-    // contribution for the same lifetime as the Service backing it.
-    ctx.typert.register({
-      ...TYPERT,
-      invocations: TYPERT.invocations.filter(descriptor => descriptor.service !== 'sessionController'
-        || typeof Reflect.get(SessionController.prototype, descriptor.implementation ?? descriptor.method) === 'function'),
-    })
     this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     ctx.effect(()=>()=>this.commands.disposeUserSourceOperations(),'session-controller: user Source owners')

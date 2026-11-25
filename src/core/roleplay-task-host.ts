@@ -19,7 +19,7 @@ export function createRoleplayTaskHost({
   T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
   taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
   inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,advancedCardReady,
-  observeRecords,storyEntryReader,characterPrivate,
+  observeRecords,storyEntryReader,characterPrivate,auxiliaryInstructions,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
   const authorDialogOwners=new Map<string,{session:HostSession;agent:HostAgent;
@@ -155,6 +155,7 @@ export function createRoleplayTaskHost({
         && taskDependenciesCurrent(T,session.id,source.dependencies)
   }
   const tavernTasks = createTavernTasks<HostSession, HostAgent>({table:T.branch,policy:modelPolicy,subagents:ctx.subagents,
+    auxiliaryInstructions,
     async inspectAuthorGeneration(job){
       if(typeof job.childSessionId!=='string'||!job.authorExecution)return undefined
       const {inspectNativeAuthorGenerationV1,inspectNativeAuthorGenerationTerminalV1}=await import('dsh-nexttavern-native-agent-loop'),

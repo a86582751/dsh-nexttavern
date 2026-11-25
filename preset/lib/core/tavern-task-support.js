@@ -1,5 +1,8 @@
 // Generated from runtime/alpha3/src/core/tavern-task-support.ts; edit the TypeScript source.
 const copy = (value) => value == null ? value : structuredClone(value);
+export function isTaskRequestRejection(failure) {
+    return failure.code === 'INVALID_REQUEST' || failure.category === 'invalid-request';
+}
 export class TaskValidationError extends Error {
     code;
     failure;
@@ -48,7 +51,8 @@ export function taskFailureDetails(raw) {
                     : /invalid.*header|header.*invalid|请求头/.test(hint) ? 'request-header'
                         : status === 401 || /auth|invalid.api.key/.test(hint) ? 'authentication' : status === 403 ? 'permission' : status === 429 ? 'rate-limit'
                             : /overloaded|over.capacity|server.{0,40}busy|服务.{0,8}繁忙/.test(hint) ? 'overloaded'
-                                : status === 400 || status === 422 ? 'invalid-request' : (status ?? 0) >= 500 ? 'upstream' : data.kind === 'aborted' ? 'cancelled' : 'unknown';
+                                : code === 'INVALID_REQUEST' || status === 400 || status === 422 ? 'invalid-request'
+                                    : (status ?? 0) >= 500 ? 'upstream' : data.kind === 'aborted' ? 'cancelled' : 'unknown';
     return { category, label: FAILURE_LABELS[category], code, status };
 }
 const tableLocks = new WeakMap();

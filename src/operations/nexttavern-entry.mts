@@ -63,6 +63,7 @@ export default class NextTavernEntry extends EntryTree {
   private stopping?: Promise<void>
   private released = false
   private epoch = 0
+  private modules = new Map<string,string>()
   private hostFiber?: Fiber
   private settingsBridge?: SettingsBridge
   private preparation?: PackagePreparationScheduler
@@ -159,6 +160,10 @@ export default class NextTavernEntry extends EntryTree {
   /** Child edits belong to this transient subtree, never the profile file. */
   commit(): void {}
 
+  override import(name: string, getOuterStack?: () => string[]) {
+    return super.import(this.modules.get(name)??name, getOuterStack)
+  }
+
   /**
    * The deferred writer for this install's durable package references. It never
    * runs inside the loading lifecycle: `reconcile` only inspects read-only, and
@@ -223,6 +228,7 @@ export default class NextTavernEntry extends EntryTree {
 
   private rows(): EntryOptions[] {
     const ids = new Set<string>()
+    const modules = new Map<string,string>()
     const rows = this.config.providers.map(provider => {
       if (ids.has(provider.id)) throw Error(`Duplicate NextTavern provider ${provider.id}`)
       ids.add(provider.id)
@@ -239,21 +245,26 @@ export default class NextTavernEntry extends EntryTree {
         || disabled.__jsExpr !== providerDisabledExpression) {
         throw Error(`NextTavern does not own provider policy ${provider.id}`)
       }
-      return {...structuredClone(intent.row), name: ownedModule(provider.replacement)}
+      // Keep Loader's package identity visible to plugin discovery, while
+      // imports still use the exact admitted product-owned entry point.
+      modules.set(provider.replacement, ownedModule(provider.replacement))
+      return {...structuredClone(intent.row), name: provider.replacement}
     })
     const addons = structuredClone(this.config.addons ?? []).map(row => {
       if (!row.id || ids.has(row.id)) throw Error(`Duplicate or missing NextTavern addon identity ${row.id}`)
       ids.add(row.id)
-      return {...row, name: addonModule(row.name)}
+      modules.set(row.name, addonModule(row.name))
+      return row
     })
+    this.modules = modules
     return [...rows, ...addons]
   }
 
   private async settleNativeDependencies(epoch: number): Promise<void> {
     // Replacing persistence wakes native Workspace; Connection may still be
     // loading its browser credentials. Our subtree's await() returns for PENDING
-    // consumers before that independent I/O completes. Drain only work already
-    // running outside our tree, never the Include/Loader ancestors awaiting us.
+    // consumers before that independent I/O completes. Loader also tracks
+    // imports that have started but have not created their fiber yet.
     const excluded = new Set([...this.entries()].map(entry => entry.fiber))
     let ancestor = this.ctx.fiber
     while (!excluded.has(ancestor)) {
@@ -265,10 +276,13 @@ export default class NextTavernEntry extends EntryTree {
         // The host tree also includes this entry's init, which is awaiting reconcile.
         if (entry.options.id === PRODUCT_ENTRY) return []
         const fiber = entry.fiber
-        return fiber?.inertia && !excluded.has(fiber) ? [fiber.inertia] : []
+        if(fiber&&excluded.has(fiber)) return []
+        const task=entry._initTask??fiber?.inertia
+        return task ? [task] : []
       }))
-      if (!running.size) return
-      await Promise.allSettled(running)
+      // Once a required service arrives, unrelated siblings need not finish.
+      if (running.size) await Promise.race([...running].map(task=>task.catch(()=>{})))
+      else if (!this.getTasks().length) return
       if (this.closing || epoch !== this.epoch) return
       await this.await()
     }
@@ -303,12 +317,12 @@ export default class NextTavernEntry extends EntryTree {
       this.released = false
       await this.root.update(rows)
       await this.await()
+      await this.settleNativeDependencies(epoch)
+      if (this.closing || epoch !== this.epoch) return
       const outcomes = await Promise.allSettled([...this.entries()].map(entry => entry.fiber?.await()))
       const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
       if (failures.length) throw new AggregateError(failures.map(outcome => outcome.reason),
         'NextTavern child activation failed')
-      await this.settleNativeDependencies(epoch)
-      if (this.closing || epoch !== this.epoch) return
       // await() drains work but also returns for PENDING fibers whose hard
       // dependencies never appeared. Do not report a half-active takeover.
       for (const entry of this.entries()) {

@@ -6754,6 +6754,50 @@
       "source": "screenshots/usage.png"
     },
     {
+      "id": "screenshot-v03-cover",
+      "source": "screenshots/v03-cover.webp"
+    },
+    {
+      "id": "screenshot-v03-openings",
+      "source": "screenshots/v03-openings.webp"
+    },
+    {
+      "id": "screenshot-v03-author-interface",
+      "source": "screenshots/v03-author-interface.webp"
+    },
+    {
+      "id": "screenshot-v03-side-chat",
+      "source": "screenshots/v03-side-chat.webp"
+    },
+    {
+      "id": "screenshot-v03-worldbook",
+      "source": "screenshots/v03-worldbook.webp"
+    },
+    {
+      "id": "screenshot-v03-presets",
+      "source": "screenshots/v03-presets.webp"
+    },
+    {
+      "id": "screenshot-v03-prose",
+      "source": "screenshots/v03-prose.webp"
+    },
+    {
+      "id": "screenshot-v03-author-status",
+      "source": "screenshots/v03-author-status.webp"
+    },
+    {
+      "id": "screenshot-v03-card-import",
+      "source": "screenshots/v03-card-import.webp"
+    },
+    {
+      "id": "screenshot-v03-mvu",
+      "source": "screenshots/v03-mvu.webp"
+    },
+    {
+      "id": "screenshot-v03-ruby",
+      "source": "screenshots/v03-ruby.webp"
+    },
+    {
       "id": "screenshot-worldbook",
       "source": "screenshots/worldbook.png"
     },

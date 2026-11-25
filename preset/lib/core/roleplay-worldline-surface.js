@@ -785,8 +785,7 @@ export function createWorldlineSurface(deps, forks) {
     // A provider failure can leave a real player message with no assistant
     // message below it.  It is still a valid recovery anchor: fork before the
     // failed turn and replay the corrected prompt in a clean child session.
-    function locatePlayerRecoveryTarget(session, seq) {
-        const context = userForkContext(session, seq);
+    function locatePlayerRecoveryTarget(session, seq, context = userForkContext(session, seq)) {
         const userEvent = context.event;
         const userTurn = turnForEvent(session, userEvent);
         if (!Number.isSafeInteger(Number(userTurn))) {

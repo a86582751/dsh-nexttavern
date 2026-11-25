@@ -10,8 +10,8 @@ android {
         applicationId = "app.nexttavern.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0-rc.1"
+        versionCode = 4
+        versionName = "0.3.0-rc.2"
         resValue("string", "app_name", "NextTavern Mobile 预览版")
     }
     flavorDimensions += "runtime"

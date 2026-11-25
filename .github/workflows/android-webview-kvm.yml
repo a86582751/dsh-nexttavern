@@ -48,8 +48,9 @@ jobs:
       - name: Run Android regressions, then exercise the selected mode in required KVM
         shell: bash
         env:
-          NEXTTAVERN_UI_PHASE: ${{ inputs.ui_phase || 'standard' }}
-          NEXTTAVERN_UPGRADE_FROM_VERSION_CODE: ${{ inputs.ui_phase == 'memory' && '2' || '' }}
+          NEXTTAVERN_UI_PHASE: ${{ inputs.ui_phase || 'memory' }}
+          NEXTTAVERN_UPGRADE_FROM_VERSION_CODE: ${{ inputs.ui_phase != 'standard' && '3' || '' }}
+          NEXTTAVERN_STANDARD_TOOL_QA: ${{ inputs.ui_phase != 'standard' && '1' || '' }}
           NEXTTAVERN_UI_EVIDENCE_DIR: ${{ runner.temp }}/nexttavern-ui-images
         run: bash qa/android-webview-kvm/run-smoke.sh --mobile
       - name: Locate only the approved synthetic UI PNGs

@@ -128,6 +128,7 @@ export interface TaskChild {
   localAgent?: {session?: {events?: {type: string; data?: {reason?: unknown}}[]}}
 }
 export interface TaskOptions<S, A> {
+  auxiliaryInstructions?(session:S,kind:string):string|undefined
   table: {
     get(key: string): unknown
     entries(): Iterable<[string, unknown]>

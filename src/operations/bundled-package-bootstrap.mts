@@ -90,8 +90,8 @@ function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor
     // relink; host services must still resolve to the host's exact singleton.
     const owned = peer.startsWith('dsh-nexttavern-')
     if (owned && !ownedNames.has(peer)) throw Error('Uninventoried owned peer: ' + peer)
-    // Every non-owned peer is a host service, so it must come from the harness
-    // namespace. A third-party library declared as a host peer resolves only
+    // Non-owned peers come from the Harness namespace. A third-party library
+    // declared as a host peer resolves only
     // when the harness happens to depend on it, which ships a product that
     // cannot start on a profile the harness does not sit above.
     if (!owned && !peer.startsWith('@deepseek-ai/')) {
@@ -104,7 +104,13 @@ function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor
     // namespace. Its admitted manifest is already the exact expected owner.
     const actual=peerPackage(metadataPath,peer,optional,namespace?undefined:resolveManifest)
     const expected=namespace??peerPackage(reference,peer,optional,resolveManifest)
-    if (actual !== expected) {
+    // Cordis recognises Schemastery by the registered symbol and schema shape.
+    // pnpm may materialise the same published version separately for another
+    // profile plugin. Keep exact instance identity for actual host services.
+    const compatibleSchema = actual !== expected && peer === '@deepseek-ai/schemastery'
+      && actual !== null && expected !== null
+      && readJson<PackageMetadata>(actual).version === readJson<PackageMetadata>(expected).version
+    if (actual !== expected && !compatibleSchema) {
       throw Error('Compatibility dependency uses a different host peer: ' + metadata.name + ' -> ' + peer)
     }
   }

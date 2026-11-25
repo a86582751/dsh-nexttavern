@@ -122,11 +122,15 @@ export function createCommunityPresetVariables(table:CommunityPresetTable,deps:D
       ...basis.scopeRef!==undefined?{scopeRef:basis.scopeRef}:{},contributionId:id,replacesAttemptId:basis.priorAttemptId,
       globalRevision:sharedScope.baseline.revision,globalContributionPresent:sharedScope.globalContributionPresent,sharedScope}
   }
-  function captureDisplay(sessionId:string) {
+  function readDisplayValues(sessionId:string) {
     const {namespace}=deps.captureNamespace(sessionId),
       chatCapture=deps.state.captureNamespaceWithoutContribution(namespace,authorChatContributionIdV3(namespace,'display')),
       global=deps.scopes.capture(address)
-    return {chat:clone({...chatCapture.values}),global:clone({...global.values}),chatCapture}
+    return {chat:chatCapture.values,global:global.values,chatCapture}
+  }
+  function captureDisplay(sessionId:string) {
+    const {chat,global,chatCapture}=readDisplayValues(sessionId)
+    return {chat:clone({...chat}),global:clone({...global}),chatCapture}
   }
   function intentFor(record:AcceptedPreparationRecord,anchor=false,
     plan=record.ordinaryChat):AcceptedAuthorChatContributionV3|undefined {
@@ -307,7 +311,7 @@ export function createCommunityPresetVariables(table:CommunityPresetTable,deps:D
     }
     return {accepted,keys}
   }
-  return {capture,captureDisplay,captureSharedScopes,commitPreparation,setGlobal,configure,receiptFacts,
+  return {capture,captureDisplay,readDisplayValues,captureSharedScopes,commitPreparation,setGlobal,configure,receiptFacts,
     isPublishing:(key:string,value:unknown)=>!!value&&typeof value==='object'
       &&(publishing.get(value)===key||deps.scopes.isPublishing(key,value)),
     readGlobal:(_presetId?:string)=>{const capture=deps.scopes.capture(address)
