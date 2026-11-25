@@ -67,8 +67,29 @@ async function materialize(anchor:string,name:string) {
 await materialize(path.join(repo,'build-tools'),'@koromix/koffi-android-'+abi)
 await materialize(path.join(repo,'build-tools'),'@firecrawl/anydoc-linux-'+abi+'-musl')
 const piArchive=await lockedArchive(path.join(repo,'build-tools'),'@earendil-works/pi-ai')
+const archives:Record<string,string>={'pi-ai':piArchive}
+// RC2 can reopen stories authored under earlier component generations. Supply
+// those archives from the public release registry, not a fresh desktop build
+// or today's npm tag. The assembler also verifies their inventory and provenance.
+const {readPublishedReleaseCatalog}=await import(pathToFileURL(path.join(repo,'lib/operations/released-component-catalog.mjs')).href)
+const {compilerPlan}=read(path.join(repo,'tools/build-map.json'))
+for(const release of readPublishedReleaseCatalog(repo,compilerPlan).releases) {
+  const {url,sha256,bytes}=release.archive
+  const allowed='https://github.com/a86582751/dsh-nexttavern/releases/download/v'+release.version+'/dsh-nexttavern.tgz'
+  if(release.packageName!=='dsh-nexttavern'||!/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(release.version)
+    ||url!==allowed||!/^[a-f0-9]{64}$/.test(sha256)||!Number.isSafeInteger(bytes)||bytes<=0) {
+    throw Error('Invalid pinned public component archive')
+  }
+  const file=path.join(inputs,'published-'+sha256+'.tgz')
+  run('curl',['-fsSL','--retry','2','--retry-all-errors','--connect-timeout','30','--max-time','300',url,'-o',file])
+  const data=fs.readFileSync(file)
+  if(data.length!==bytes||createHash('sha256').update(data).digest('hex')!==sha256) {
+    throw Error('Public component archive integrity mismatch: '+release.version)
+  }
+  archives['published:'+sha256]=file
+}
 const {prepareProduct}=await import(pathToFileURL(path.join(repo,'android/tools/prepare-product.mjs')).href)
-prepareProduct({repo,output:product,abi,archives:{'pi-ai':piArchive}})
+prepareProduct({repo,output:product,abi,archives})
 mark('PUBLIC_'+abi.toUpperCase()+'_PRODUCT_PREPARED')
 
 fs.mkdirSync(harness)
